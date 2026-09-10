@@ -11,3 +11,16 @@ export const DIFFICULTY_LABELS: Record<string, string> = {
   MEDIUM: "中等",
   HARD: "困难",
 };
+
+export const CATEGORY_LABELS: Record<string, { text: string; className: string }> = {
+  NOTES: { text: "课程资料", className: "bg-neutral-100 text-neutral-600" },
+  OVERVIEW: { text: "课程大纲/评分说明", className: "bg-purple-100 text-purple-700" },
+};
+
+// tags used on OVERVIEW-category knowledge points
+export const OVERVIEW_TAG_LABELS: Record<string, string> = {
+  "basic-info": "基本信息",
+  schedule: "课程进度",
+  grading: "评分说明",
+  deadline: "重要日期",
+};

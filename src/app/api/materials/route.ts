@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const courseId = searchParams.get("courseId") ?? undefined;
   const chapterId = searchParams.get("chapterId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
+  const category = searchParams.get("category") ?? undefined;
 
   const materials = await prisma.material.findMany({
     where: {
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
       courseId: courseId || undefined,
       chapterId: chapterId || undefined,
       status: (status as never) || undefined,
+      category: (category as never) || undefined,
     },
     orderBy: { createdAt: "desc" },
     include: {
@@ -44,12 +46,15 @@ export async function POST(req: NextRequest) {
   const subjectId = (form.get("subjectId") as string | null) || null;
   const courseId = (form.get("courseId") as string | null) || null;
   const chapterId = (form.get("chapterId") as string | null) || null;
+  const categoryRaw = (form.get("category") as string | null) || "NOTES";
+  const category = categoryRaw === "OVERVIEW" ? "OVERVIEW" : "NOTES";
 
   const material = await prisma.material.create({
     data: {
       filename: file.name,
       storagePath: "", // filled in right after, once we have the material id
       fileType: "PDF",
+      category,
       status: "PENDING",
       subjectId,
       courseId,

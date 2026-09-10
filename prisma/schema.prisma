@@ -24,6 +24,11 @@ enum MaterialType {
   // PPTX, DOCX, IMAGE planned for a later phase
 }
 
+enum MaterialCategory {
+  NOTES // lecture slides, textbook excerpts, notes -> knowledge points & questions
+  OVERVIEW // syllabus, grading breakdown, schedule -> course structure info
+}
+
 model Subject {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -67,8 +72,9 @@ model Material {
   id           String         @id @default(cuid())
   filename     String
   storagePath  String // path on disk (phase 1: local filesystem)
-  fileType     MaterialType   @default(PDF)
-  status       MaterialStatus @default(PENDING)
+  fileType     MaterialType     @default(PDF)
+  category     MaterialCategory @default(NOTES)
+  status       MaterialStatus   @default(PENDING)
   errorMessage String?
 
   subjectId String?

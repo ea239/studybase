@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
-import { DIFFICULTY_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, DIFFICULTY_LABELS, OVERVIEW_TAG_LABELS } from "@/lib/labels";
 
 type KnowledgePoint = {
   id: string;
@@ -30,6 +30,7 @@ type Material = {
   id: string;
   filename: string;
   status: string;
+  category: string;
   errorMessage: string | null;
   summary: string | null;
   subject: { name: string } | null;
@@ -80,7 +81,16 @@ export function MaterialDetailClient({ id }: { id: string }) {
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">{material.filename}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">{material.filename}</h1>
+            {material.category === "OVERVIEW" && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS.OVERVIEW.className}`}
+              >
+                {CATEGORY_LABELS.OVERVIEW.text}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-neutral-500">
             {material.subject?.name ?? "未分类"}
             {material.course ? ` · ${material.course.name}` : ""}
@@ -123,21 +133,35 @@ export function MaterialDetailClient({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-neutral-200">
-        <TabButton active={tab === "knowledge"} onClick={() => setTab("knowledge")}>
-          知识点 ({material.knowledgePoints.length})
-        </TabButton>
-        <TabButton active={tab === "questions"} onClick={() => setTab("questions")}>
-          题目 ({material.questions.length})
-        </TabButton>
-        <TabButton active={tab === "raw"} onClick={() => setTab("raw")}>
-          原文（{material.pages.length} 页）
-        </TabButton>
-      </div>
+      {(() => {
+        const isOverview = material.category === "OVERVIEW";
+        return (
+          <>
+            <div className="flex gap-1 border-b border-neutral-200">
+              <TabButton active={tab === "knowledge"} onClick={() => setTab("knowledge")}>
+                {isOverview ? "课程信息" : "知识点"} ({material.knowledgePoints.length})
+              </TabButton>
+              {!isOverview && (
+                <TabButton active={tab === "questions"} onClick={() => setTab("questions")}>
+                  题目 ({material.questions.length})
+                </TabButton>
+              )}
+              <TabButton active={tab === "raw"} onClick={() => setTab("raw")}>
+                原文（{material.pages.length} 页）
+              </TabButton>
+            </div>
 
-      {tab === "knowledge" && <KnowledgeList items={material.knowledgePoints} onChanged={load} />}
-      {tab === "questions" && <QuestionList items={material.questions} onChanged={load} />}
-      {tab === "raw" && <RawPages pages={material.pages} />}
+            {tab === "knowledge" &&
+              (isOverview ? (
+                <OverviewList items={material.knowledgePoints} onChanged={load} />
+              ) : (
+                <KnowledgeList items={material.knowledgePoints} onChanged={load} />
+              ))}
+            {tab === "questions" && !isOverview && <QuestionList items={material.questions} onChanged={load} />}
+            {tab === "raw" && <RawPages pages={material.pages} />}
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -171,6 +195,61 @@ function ConfidenceTag({ confidence, isAiGenerated }: { confidence: number | nul
     <span className={`text-xs ${low ? "text-amber-700" : "text-neutral-400"}`}>
       AI 置信度 {(confidence * 100).toFixed(0)}%
     </span>
+  );
+}
+
+const OVERVIEW_TAG_ORDER = ["basic-info", "schedule", "grading", "deadline"];
+
+function OverviewList({ items, onChanged }: { items: KnowledgePoint[]; onChanged: () => void }) {
+  async function remove(itemId: string) {
+    await fetch(`/api/knowledge-points/${itemId}`, { method: "DELETE" });
+    onChanged();
+  }
+
+  if (items.length === 0) return <p className="text-sm text-neutral-500">暂无内容。</p>;
+
+  const groups = new Map<string, KnowledgePoint[]>();
+  for (const item of items) {
+    const tag = item.tags?.split(",").find((t) => OVERVIEW_TAG_ORDER.includes(t)) ?? "other";
+    if (!groups.has(tag)) groups.set(tag, []);
+    groups.get(tag)!.push(item);
+  }
+  const orderedTags = [...OVERVIEW_TAG_ORDER, "other"].filter((t) => groups.has(t));
+
+  return (
+    <div className="flex flex-col gap-5">
+      {orderedTags.map((tag) => (
+        <div key={tag}>
+          <h3 className="mb-2 text-sm font-semibold text-neutral-600">
+            {OVERVIEW_TAG_LABELS[tag] ?? "其他"}
+          </h3>
+          <div className="flex flex-col gap-2">
+            {groups.get(tag)!.map((item) => (
+              <div key={item.id} className="rounded-lg border border-neutral-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">{item.title}</div>
+                    <div className="text-sm text-neutral-700">{item.content}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.sourcePage != null && (
+                      <span className="text-xs text-neutral-400">第 {item.sourcePage} 页</span>
+                    )}
+                    <ConfidenceTag confidence={item.confidence} isAiGenerated={item.isAiGenerated} />
+                  </div>
+                </div>
+                <button
+                  onClick={() => remove(item.id)}
+                  className="mt-1 text-xs text-red-600 hover:underline"
+                >
+                  删除
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

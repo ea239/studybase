@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CATEGORY_LABELS } from "@/lib/labels";
 
 type Chapter = { id: string; name: string };
 type Course = { id: string; name: string; chapters: Chapter[] };
@@ -11,6 +12,7 @@ type Material = {
   id: string;
   filename: string;
   status: string;
+  category: string;
   errorMessage: string | null;
   createdAt: string;
   subject: { id: string; name: string } | null;
@@ -35,6 +37,7 @@ export function MaterialsClient({
   const [uploadSubjectId, setUploadSubjectId] = useState(initialSubjectId ?? "");
   const [uploadCourseId, setUploadCourseId] = useState("");
   const [uploadChapterId, setUploadChapterId] = useState("");
+  const [uploadCategory, setUploadCategory] = useState<"NOTES" | "OVERVIEW">("NOTES");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +83,7 @@ export function MaterialsClient({
     setUploadError(null);
     const form = new FormData();
     form.append("file", file);
+    form.append("category", uploadCategory);
     if (uploadSubjectId) form.append("subjectId", uploadSubjectId);
     if (uploadCourseId) form.append("courseId", uploadCourseId);
     if (uploadChapterId) form.append("chapterId", uploadChapterId);
@@ -101,6 +105,33 @@ export function MaterialsClient({
         <h2 className="mb-3 font-semibold">上传资料</h2>
         <div className="flex flex-col gap-3">
           <input ref={fileInputRef} type="file" accept="application/pdf" className="text-sm" />
+
+          <div className="flex gap-3 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="uploadCategory"
+                checked={uploadCategory === "NOTES"}
+                onChange={() => setUploadCategory("NOTES")}
+              />
+              课程资料（讲义/笔记/题目）
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="uploadCategory"
+                checked={uploadCategory === "OVERVIEW"}
+                onChange={() => setUploadCategory("OVERVIEW")}
+              />
+              课程大纲 / 评分说明 / 课表
+            </label>
+          </div>
+          {uploadCategory === "OVERVIEW" && (
+            <p className="text-xs text-neutral-500">
+              这类文件会按课程结构解析（基本信息、课程进度、评分占比、重要日期），而不是提取知识点和题目。
+            </p>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <select
               value={uploadSubjectId}
@@ -228,10 +259,19 @@ export function MaterialsClient({
                 className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-50"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{m.filename}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="truncate font-medium">{m.filename}</div>
+                    {m.category === "OVERVIEW" && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS.OVERVIEW.className}`}
+                      >
+                        {CATEGORY_LABELS.OVERVIEW.text}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-neutral-500">
                     {m.subject?.name ?? "未分类"}
-                    {m.chapter ? ` · ${m.chapter.name}` : ""} · {m._count.pages} 页 · {m._count.knowledgePoints} 个知识点 ·{" "}
+                    {m.chapter ? ` · ${m.chapter.name}` : ""} · {m._count.pages} 页 · {m._count.knowledgePoints} 项 ·{" "}
                     {m._count.questions} 道题
                   </div>
                   {m.errorMessage && <div className="text-xs text-amber-700">{m.errorMessage}</div>}

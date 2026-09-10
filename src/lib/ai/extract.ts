@@ -46,7 +46,7 @@ function buildPrompt(pages: ExtractedPage[]) {
   return parts.join("");
 }
 
-const SYSTEM_PROMPT = `You are an assistant that turns study material (lecture slides, textbook excerpts, notes) into structured study content.
+const NOTES_SYSTEM_PROMPT = `You are an assistant that turns study material (lecture slides, textbook excerpts, notes) into structured study content.
 
 Given the raw text of a document, page by page, extract:
 1. A short summary (2-4 sentences) of what the document covers.
@@ -62,11 +62,34 @@ Return JSON matching this shape exactly:
   "questions": [{ "stem": string, "options": string[] | null, "answer": string, "explanation": string, "sourcePage": number, "difficulty": "EASY"|"MEDIUM"|"HARD", "confidence": number }]
 }`;
 
+// For overview documents (syllabus, grading breakdown, course schedule).
+// These don't have knowledge points or exercises — instead they describe the
+// course itself. Reuses the same knowledgePoints[] shape so the pipeline and
+// DB writes stay identical; each item is just a course-structure fact rather
+// than a concept, distinguished by its "tags".
+const OVERVIEW_SYSTEM_PROMPT = `You are an assistant that turns a course overview document (syllabus, grading policy, course schedule/outline) into structured course information.
+
+Given the raw text of a document, page by page, extract:
+1. A short summary (2-4 sentences) of what the document covers — e.g. course name, instructor, credits, term.
+2. Course structure items, each with a "title", "content", the page it came from, and a "tags" array using EXACTLY one of: ["basic-info"] for course name/instructor/credits/term, ["schedule"] for a week/topic/unit in the course outline, ["grading"] for a grading component and its weight (e.g. "期末考试 40%"), ["deadline"] for an assignment/exam date. One item per fact — do not bundle the whole grading table into a single item.
+Leave "questions" as an empty array — overview documents don't contain exercises.
+
+For every item, include a "confidence" score from 0 to 1 reflecting how certain you are about the page number and correctness of the extraction. Use a lower score when the source text is garbled, ambiguous, or you had to infer structure.
+
+Return JSON matching this shape exactly:
+{
+  "summary": string,
+  "knowledgePoints": [{ "title": string, "content": string, "sourcePage": number, "tags": string[], "confidence": number }],
+  "questions": []
+}`;
+
 export async function extractStructuredContent(
   settings: AiSettings,
-  pages: ExtractedPage[]
+  pages: ExtractedPage[],
+  category: "NOTES" | "OVERVIEW" = "NOTES"
 ): Promise<ExtractionResult> {
   const user = buildPrompt(pages);
-  const raw = await chatJSON(settings, SYSTEM_PROMPT, user);
+  const systemPrompt = category === "OVERVIEW" ? OVERVIEW_SYSTEM_PROMPT : NOTES_SYSTEM_PROMPT;
+  const raw = await chatJSON(settings, systemPrompt, user);
   return extractionSchema.parse(raw);
 }
