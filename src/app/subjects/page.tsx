@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function SubjectsPage() {
   const subjects = await prisma.subject.findMany({
     orderBy: { name: "asc" },
-    include: { courses: { orderBy: { name: "asc" }, include: { chapters: { orderBy: { order: "asc" } } } } },
+    include: { chapters: { orderBy: { order: "asc" } } },
   });
 
   return (

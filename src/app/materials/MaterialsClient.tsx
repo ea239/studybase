@@ -6,8 +6,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { CATEGORY_LABELS } from "@/lib/labels";
 
 type Chapter = { id: string; name: string };
-type Course = { id: string; name: string; chapters: Chapter[] };
-type Subject = { id: string; name: string; courses: Course[] };
+type Subject = { id: string; name: string; chapters: Chapter[] };
 type Material = {
   id: string;
   filename: string;
@@ -16,7 +15,6 @@ type Material = {
   errorMessage: string | null;
   createdAt: string;
   subject: { id: string; name: string } | null;
-  course: { id: string; name: string } | null;
   chapter: { id: string; name: string } | null;
   _count: { knowledgePoints: number; questions: number; pages: number };
 };
@@ -31,11 +29,9 @@ export function MaterialsClient({
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [subjectId, setSubjectId] = useState(initialSubjectId ?? "");
-  const [courseId, setCourseId] = useState("");
   const [chapterId, setChapterId] = useState("");
 
   const [uploadSubjectId, setUploadSubjectId] = useState(initialSubjectId ?? "");
-  const [uploadCourseId, setUploadCourseId] = useState("");
   const [uploadChapterId, setUploadChapterId] = useState("");
   const [uploadCategory, setUploadCategory] = useState<"NOTES" | "OVERVIEW" | "LAB">("NOTES");
   const [uploading, setUploading] = useState(false);
@@ -45,13 +41,12 @@ export function MaterialsClient({
   const loadMaterials = useCallback(async () => {
     const params = new URLSearchParams();
     if (subjectId) params.set("subjectId", subjectId);
-    if (courseId) params.set("courseId", courseId);
     if (chapterId) params.set("chapterId", chapterId);
     const res = await fetch(`/api/materials?${params.toString()}`);
     const data = await res.json();
     setMaterials(data);
     setLoading(false);
-  }, [subjectId, courseId, chapterId]);
+  }, [subjectId, chapterId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
@@ -68,10 +63,7 @@ export function MaterialsClient({
   }, [materials, loadMaterials]);
 
   const selectedUploadSubject = subjects.find((s) => s.id === uploadSubjectId);
-  const selectedUploadCourse = selectedUploadSubject?.courses.find((c) => c.id === uploadCourseId);
-
-  const filterCourse = subjects.find((s) => s.id === subjectId);
-  const filterChapters = filterCourse?.courses.find((c) => c.id === courseId)?.chapters ?? [];
+  const filterSubject = subjects.find((s) => s.id === subjectId);
 
   async function handleUpload() {
     const file = fileInputRef.current?.files?.[0];
@@ -85,7 +77,6 @@ export function MaterialsClient({
     form.append("file", file);
     form.append("category", uploadCategory);
     if (uploadSubjectId) form.append("subjectId", uploadSubjectId);
-    if (uploadCourseId) form.append("courseId", uploadCourseId);
     if (uploadChapterId) form.append("chapterId", uploadChapterId);
 
     const res = await fetch("/api/materials", { method: "POST", body: form });
@@ -156,7 +147,6 @@ export function MaterialsClient({
               value={uploadSubjectId}
               onChange={(e) => {
                 setUploadSubjectId(e.target.value);
-                setUploadCourseId("");
                 setUploadChapterId("");
               }}
               className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
@@ -169,29 +159,13 @@ export function MaterialsClient({
               ))}
             </select>
             <select
-              value={uploadCourseId}
-              onChange={(e) => {
-                setUploadCourseId(e.target.value);
-                setUploadChapterId("");
-              }}
+              value={uploadChapterId}
+              onChange={(e) => setUploadChapterId(e.target.value)}
               disabled={!selectedUploadSubject}
               className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm disabled:opacity-50"
             >
-              <option value="">不指定课程</option>
-              {selectedUploadSubject?.courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={uploadChapterId}
-              onChange={(e) => setUploadChapterId(e.target.value)}
-              disabled={!selectedUploadCourse}
-              className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm disabled:opacity-50"
-            >
               <option value="">不指定章节</option>
-              {selectedUploadCourse?.chapters.map((ch) => (
+              {selectedUploadSubject?.chapters.map((ch) => (
                 <option key={ch.id} value={ch.id}>
                   {ch.name}
                 </option>
@@ -200,7 +174,7 @@ export function MaterialsClient({
           </div>
           {subjects.length === 0 && (
             <p className="text-xs text-neutral-500">
-              还没有科目/课程/章节，可以先去 <Link href="/subjects" className="text-blue-600 hover:underline">全部科目</Link> 创建，也可以先不分类直接上传。
+              还没有科目/章节，可以先去 <Link href="/subjects" className="text-blue-600 hover:underline">全部科目</Link> 创建，也可以先不分类直接上传。
             </p>
           )}
           {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
@@ -224,7 +198,6 @@ export function MaterialsClient({
             value={subjectId}
             onChange={(e) => {
               setSubjectId(e.target.value);
-              setCourseId("");
               setChapterId("");
             }}
             className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
@@ -237,29 +210,13 @@ export function MaterialsClient({
             ))}
           </select>
           <select
-            value={courseId}
-            onChange={(e) => {
-              setCourseId(e.target.value);
-              setChapterId("");
-            }}
-            disabled={!filterCourse}
-            className="rounded-md border border-neutral-300 px-2 py-1 text-sm disabled:opacity-50"
-          >
-            <option value="">全部课程</option>
-            {filterCourse?.courses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select
             value={chapterId}
             onChange={(e) => setChapterId(e.target.value)}
-            disabled={filterChapters.length === 0}
+            disabled={!filterSubject || filterSubject.chapters.length === 0}
             className="rounded-md border border-neutral-300 px-2 py-1 text-sm disabled:opacity-50"
           >
             <option value="">全部章节</option>
-            {filterChapters.map((ch) => (
+            {filterSubject?.chapters.map((ch) => (
               <option key={ch.id} value={ch.id}>
                 {ch.name}
               </option>

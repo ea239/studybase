@@ -34,7 +34,6 @@ type Material = {
   errorMessage: string | null;
   summary: string | null;
   subject: { name: string } | null;
-  course: { name: string } | null;
   chapter: { name: string } | null;
   pages: Page[];
   knowledgePoints: KnowledgePoint[];
@@ -93,7 +92,6 @@ export function MaterialDetailClient({ id }: { id: string }) {
           </div>
           <p className="text-sm text-neutral-500">
             {material.subject?.name ?? "未分类"}
-            {material.course ? ` · ${material.course.name}` : ""}
             {material.chapter ? ` · ${material.chapter.name}` : ""}
           </p>
         </div>

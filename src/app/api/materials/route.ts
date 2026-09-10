@@ -6,7 +6,6 @@ import { processMaterial } from "@/lib/pipeline";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const subjectId = searchParams.get("subjectId") ?? undefined;
-  const courseId = searchParams.get("courseId") ?? undefined;
   const chapterId = searchParams.get("chapterId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
   const category = searchParams.get("category") ?? undefined;
@@ -14,7 +13,6 @@ export async function GET(req: NextRequest) {
   const materials = await prisma.material.findMany({
     where: {
       subjectId: subjectId || undefined,
-      courseId: courseId || undefined,
       chapterId: chapterId || undefined,
       status: (status as never) || undefined,
       category: (category as never) || undefined,
@@ -22,7 +20,6 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
     include: {
       subject: true,
-      course: true,
       chapter: true,
       _count: { select: { knowledgePoints: true, questions: true, pages: true } },
     },
@@ -50,7 +47,6 @@ export async function POST(req: NextRequest) {
   }
 
   const subjectId = (form.get("subjectId") as string | null) || null;
-  const courseId = (form.get("courseId") as string | null) || null;
   const chapterId = (form.get("chapterId") as string | null) || null;
   const categoryRaw = (form.get("category") as string | null) || "NOTES";
   const category = categoryRaw === "OVERVIEW" || categoryRaw === "LAB" ? categoryRaw : "NOTES";
@@ -63,7 +59,6 @@ export async function POST(req: NextRequest) {
       category,
       status: "PENDING",
       subjectId,
-      courseId,
       chapterId,
     },
   });

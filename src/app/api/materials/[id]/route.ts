@@ -9,7 +9,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     include: {
       subject: true,
-      course: true,
       chapter: true,
       pages: { orderBy: { pageNumber: "asc" } },
       knowledgePoints: { orderBy: { sourcePage: "asc" } },
@@ -24,7 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
   const data: Record<string, unknown> = {};
-  for (const key of ["subjectId", "courseId", "chapterId"] as const) {
+  for (const key of ["subjectId", "chapterId"] as const) {
     if (key in body) data[key] = body[key] || null;
   }
   const material = await prisma.material.update({ where: { id }, data });

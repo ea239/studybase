@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const [materials, knowledgePoints, questions] = await Promise.all([
     prisma.material.findMany({
       where: { filename: { contains: q } },
-      include: { subject: true, course: true, chapter: true },
+      include: { subject: true, chapter: true },
       take: 20,
     }),
     prisma.knowledgePoint.findMany({

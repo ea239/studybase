@@ -11,7 +11,7 @@ export default async function MaterialsPage({
   const { subjectId } = await searchParams;
   const subjects = await prisma.subject.findMany({
     orderBy: { name: "asc" },
-    include: { courses: { orderBy: { name: "asc" }, include: { chapters: { orderBy: { order: "asc" } } } } },
+    include: { chapters: { orderBy: { order: "asc" } } },
   });
 
   return (

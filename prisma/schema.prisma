@@ -1,6 +1,8 @@
 // StudyBase — Phase 1 (MVP) schema
 // Scope: PDF upload -> text extraction -> AI-extracted knowledge points & questions
-// with source file + page tracking. Subject/Course/Chapter are manually assigned for now.
+// with source file + page tracking. Subject/Chapter are manually assigned for now.
+// A Subject is a single course (e.g. "ECE 356") — there is no separate
+// "course" grouping layer above it.
 
 generator client {
   provider = "prisma-client-js"
@@ -36,36 +38,23 @@ model Subject {
   name      String   @unique
   createdAt DateTime @default(now())
 
-  courses   Course[]
-  materials Material[]
-}
-
-model Course {
-  id        String   @id @default(cuid())
-  name      String
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
   chapters  Chapter[]
   materials Material[]
-
-  @@unique([subjectId, name])
 }
 
 model Chapter {
   id        String   @id @default(cuid())
   name      String
   order     Int      @default(0)
-  courseId  String
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   materials       Material[]
   knowledgePoints KnowledgePoint[]
   questions       Question[]
 
-  @@unique([courseId, name])
+  @@unique([subjectId, name])
 }
 
 // One uploaded source file. The original file is never overwritten or deleted
@@ -81,8 +70,6 @@ model Material {
 
   subjectId String?
   subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  courseId  String?
-  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
   chapterId String?
   chapter   Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
 

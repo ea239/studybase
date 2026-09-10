@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 export async function GET() {
   const subjects = await prisma.subject.findMany({
     orderBy: { name: "asc" },
-    include: { courses: { orderBy: { name: "asc" }, include: { chapters: { orderBy: { order: "asc" } } } } },
+    include: { chapters: { orderBy: { order: "asc" } } },
   });
   return NextResponse.json(subjects);
 }
