@@ -12,12 +12,19 @@ const mcpHandler = createMcpHandler(
 // A bare shared secret, not OAuth — see src/lib/mcp/auth.ts. Enough to stop
 // randoms from finding this endpoint if the app is ever deployed publicly;
 // not real multi-user auth.
+//
+// Deliberately 403, with no WWW-Authenticate header: a 401 + WWW-Authenticate
+// is the RFC 9728 signal that tells an MCP-spec-aware client "this resource
+// is OAuth-protected, go fetch /.well-known/oauth-protected-resource" — and
+// ChatGPT does exactly that, then fails with "does not implement OAuth"
+// since we don't have that endpoint. 403 just says "no", without implying
+// there's an auth flow to discover.
 async function authed(req: Request): Promise<Response> {
   const ok = await verifyMcpRequest(req);
   if (!ok) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { "content-type": "application/json", "www-authenticate": "Bearer" },
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
     });
   }
   return mcpHandler(req);
