@@ -3,6 +3,9 @@ import { chatJSON } from "./provider";
 import type { AiSettings } from "./types";
 import type { ExtractedPage } from "@/lib/pdf";
 
+// Models are told fields are optional/nullable but routinely send explicit
+// `null` for "no value" instead of omitting the key — every optional field
+// here must tolerate both, or a single stray null fails the whole extraction.
 const extractionSchema = z.object({
   summary: z.string(),
   knowledgePoints: z.array(
@@ -10,19 +13,27 @@ const extractionSchema = z.object({
       title: z.string(),
       content: z.string(),
       sourcePage: z.number().int().nullable().optional(),
-      tags: z.array(z.string()).optional().default([]),
-      confidence: z.number().min(0).max(1).optional(),
+      tags: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .transform((v) => v ?? []),
+      confidence: z.number().min(0).max(1).nullable().optional(),
     })
   ),
   questions: z.array(
     z.object({
       stem: z.string(),
-      options: z.array(z.string()).optional(),
+      options: z.array(z.string()).nullable().optional(),
       answer: z.string(),
-      explanation: z.string().optional(),
+      explanation: z.string().nullable().optional(),
       sourcePage: z.number().int().nullable().optional(),
-      difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).optional().default("MEDIUM"),
-      confidence: z.number().min(0).max(1).optional(),
+      difficulty: z
+        .enum(["EASY", "MEDIUM", "HARD"])
+        .nullable()
+        .optional()
+        .transform((v) => v ?? "MEDIUM"),
+      confidence: z.number().min(0).max(1).nullable().optional(),
     })
   ),
 });
