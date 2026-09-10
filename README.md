@@ -4,7 +4,8 @@ AI 学习资料库 — 阶段一（MVP）。
 
 ## 当前范围
 
-- 上传 PDF，自动提取逐页原文
+- 上传 PDF 或 HTML 网页，自动提取原文（PDF 逐页，HTML 作为单页）
+- 上传时区分「课程资料」（讲义/笔记/题目）和「课程大纲/评分说明/课表」两类，AI 按不同结构分别提取
 - 配置 AI 服务（OpenAI / Anthropic / 自定义 OpenAI 兼容接口）后，自动提取摘要、知识点、题目，并保留页码出处
 - 手动指定科目 / 课程 / 章节（暂不支持 AI 自动分类）
 - 知识点 / 题目可人工编辑，人工编辑过的内容不会被重新处理覆盖
@@ -28,7 +29,7 @@ npm run dev
 - Next.js (App Router) + TypeScript + Tailwind
 - Prisma + SQLite（本地文件数据库，personal use；后续可迁移到 Postgres）
 - 文件存储：本地文件系统 `src/data/uploads`（后续可迁移到 S3 / R2）
-- PDF 解析：`pdf-parse`
+- PDF 解析：`pdf-parse`；HTML 解析：`cheerio`
 - AI：`openai` SDK（兼容 OpenAI 及自定义端点）与 `@anthropic-ai/sdk`
 
 ## 已知限制
