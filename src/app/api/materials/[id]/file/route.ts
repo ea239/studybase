@@ -1,0 +1,19 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { readUpload } from "@/lib/storage";
+
+// Serves the original, unmodified file — this is the ground truth users can
+// always fall back to, separate from any AI-extracted content.
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const material = await prisma.material.findUnique({ where: { id } });
+  if (!material) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  const buffer = await readUpload(material.storagePath);
+  return new NextResponse(new Uint8Array(buffer), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${encodeURIComponent(material.filename)}"`,
+    },
+  });
+}

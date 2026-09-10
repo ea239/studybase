@@ -1,0 +1,156 @@
+// StudyBase — Phase 1 (MVP) schema
+// Scope: PDF upload -> text extraction -> AI-extracted knowledge points & questions
+// with source file + page tracking. Subject/Course/Chapter are manually assigned for now.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum MaterialStatus {
+  PENDING // uploaded, waiting to be processed
+  PROCESSING // text extraction / AI extraction running
+  DONE
+  NEEDS_REVIEW // AI finished but low confidence, needs human check
+  FAILED
+}
+
+enum MaterialType {
+  PDF
+  // PPTX, DOCX, IMAGE planned for a later phase
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  courses   Course[]
+  materials Material[]
+}
+
+model Course {
+  id        String   @id @default(cuid())
+  name      String
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  chapters  Chapter[]
+  materials Material[]
+
+  @@unique([subjectId, name])
+}
+
+model Chapter {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int      @default(0)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  materials       Material[]
+  knowledgePoints KnowledgePoint[]
+  questions       Question[]
+
+  @@unique([courseId, name])
+}
+
+// One uploaded source file. The original file is never overwritten or deleted
+// by re-processing — only the derived content (pages/knowledge points/questions) is.
+model Material {
+  id           String         @id @default(cuid())
+  filename     String
+  storagePath  String // path on disk (phase 1: local filesystem)
+  fileType     MaterialType   @default(PDF)
+  status       MaterialStatus @default(PENDING)
+  errorMessage String?
+
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  chapterId String?
+  chapter   Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  summary   String? // AI-generated summary of the whole document
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages           MaterialPage[]
+  knowledgePoints KnowledgePoint[]
+  questions       Question[]
+}
+
+// Raw extracted text per page, kept verbatim as ground truth for citations.
+model MaterialPage {
+  id         String   @id @default(cuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  pageNumber Int
+  rawText    String
+
+  @@unique([materialId, pageNumber])
+}
+
+// AI-extracted knowledge point (definition, formula, key concept, worked example).
+// Always traceable back to the source material + page.
+model KnowledgePoint {
+  id         String  @id @default(cuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  chapterId  String?
+  chapter    Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  title       String
+  content     String // explanation / formula / definition text
+  sourcePage  Int?
+  tags        String? // comma-separated for phase 1 (no separate tag table yet)
+  isAiGenerated Boolean @default(true)
+  confidence  Float?  // 0-1, AI's confidence in this extraction; null if human-authored
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// A question extracted from (or written for) a material. Kept independent
+// so it can be reused in practice sets regardless of its source document.
+model Question {
+  id         String   @id @default(cuid())
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  chapterId  String?
+  chapter    Chapter?  @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  stem        String // question text
+  options     String? // JSON-encoded array for multiple choice; null for free-response
+  answer      String
+  explanation String?
+  difficulty  QuestionDifficulty @default(MEDIUM)
+  sourcePage  Int?
+  isAiGenerated Boolean @default(true)
+  confidence  Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Server-side app settings (single-user, phase 1). Holds the active AI
+// provider configuration. Not encrypted at rest — fine for a personal/local
+// deployment, must change before this becomes multi-user.
+model Setting {
+  key   String @id
+  value String
+}
