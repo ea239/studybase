@@ -28,6 +28,7 @@ enum MaterialType {
 enum MaterialCategory {
   NOTES // lecture slides, textbook excerpts, notes -> knowledge points & questions
   OVERVIEW // syllabus, grading breakdown, schedule -> course structure info
+  LAB // lab manual/assignment sheet -> lab number, due date, deliverables, grading
 }
 
 model Subject {

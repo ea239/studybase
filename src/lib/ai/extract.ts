@@ -83,13 +83,36 @@ Return JSON matching this shape exactly:
   "questions": []
 }`;
 
+// For lab manuals / assignment sheets. Like overview docs, these describe a
+// task rather than teach a concept — reuses the same knowledgePoints[] shape.
+const LAB_SYSTEM_PROMPT = `You are an assistant that turns a lab manual or assignment sheet into structured task information.
+
+Given the raw text of a document, page by page, extract:
+1. A short summary (2-4 sentences): which lab/assignment this is and what it's about.
+2. Task items, each with a "title", "content", the page it came from, and a "tags" array using EXACTLY one of: ["lab-info"] for the lab/assignment number, title, or topic, ["requirement"] for a deliverable, step, or what must be submitted and how, ["grading"] for a point value or grading criterion, ["deadline"] for a due date. One item per fact — do not bundle the whole requirements list into a single item.
+Leave "questions" as an empty array.
+
+For every item, include a "confidence" score from 0 to 1 reflecting how certain you are about the page number and correctness of the extraction. Use a lower score when the source text is garbled, ambiguous, or you had to infer structure.
+
+Return JSON matching this shape exactly:
+{
+  "summary": string,
+  "knowledgePoints": [{ "title": string, "content": string, "sourcePage": number, "tags": string[], "confidence": number }],
+  "questions": []
+}`;
+
+const SYSTEM_PROMPTS = {
+  NOTES: NOTES_SYSTEM_PROMPT,
+  OVERVIEW: OVERVIEW_SYSTEM_PROMPT,
+  LAB: LAB_SYSTEM_PROMPT,
+} as const;
+
 export async function extractStructuredContent(
   settings: AiSettings,
   pages: ExtractedPage[],
-  category: "NOTES" | "OVERVIEW" = "NOTES"
+  category: keyof typeof SYSTEM_PROMPTS = "NOTES"
 ): Promise<ExtractionResult> {
   const user = buildPrompt(pages);
-  const systemPrompt = category === "OVERVIEW" ? OVERVIEW_SYSTEM_PROMPT : NOTES_SYSTEM_PROMPT;
-  const raw = await chatJSON(settings, systemPrompt, user);
+  const raw = await chatJSON(settings, SYSTEM_PROMPTS[category], user);
   return extractionSchema.parse(raw);
 }

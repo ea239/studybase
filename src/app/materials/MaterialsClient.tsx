@@ -37,7 +37,7 @@ export function MaterialsClient({
   const [uploadSubjectId, setUploadSubjectId] = useState(initialSubjectId ?? "");
   const [uploadCourseId, setUploadCourseId] = useState("");
   const [uploadChapterId, setUploadChapterId] = useState("");
-  const [uploadCategory, setUploadCategory] = useState<"NOTES" | "OVERVIEW">("NOTES");
+  const [uploadCategory, setUploadCategory] = useState<"NOTES" | "OVERVIEW" | "LAB">("NOTES");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,7 +111,7 @@ export function MaterialsClient({
             className="text-sm"
           />
 
-          <div className="flex gap-3 text-sm">
+          <div className="flex flex-wrap gap-3 text-sm">
             <label className="flex items-center gap-1.5">
               <input
                 type="radio"
@@ -130,10 +130,24 @@ export function MaterialsClient({
               />
               课程大纲 / 评分说明 / 课表
             </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="uploadCategory"
+                checked={uploadCategory === "LAB"}
+                onChange={() => setUploadCategory("LAB")}
+              />
+              实验 / 作业说明
+            </label>
           </div>
           {uploadCategory === "OVERVIEW" && (
             <p className="text-xs text-neutral-500">
               这类文件会按课程结构解析（基本信息、课程进度、评分占比、重要日期），而不是提取知识点和题目。
+            </p>
+          )}
+          {uploadCategory === "LAB" && (
+            <p className="text-xs text-neutral-500">
+              这类文件会按任务结构解析（实验/作业信息、要求与提交方式、评分说明、截止日期），而不是提取知识点和题目。
             </p>
           )}
 
@@ -268,11 +282,11 @@ export function MaterialsClient({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="truncate font-medium">{m.filename}</div>
-                    {m.category === "OVERVIEW" && (
+                    {m.category !== "NOTES" && CATEGORY_LABELS[m.category] && (
                       <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS.OVERVIEW.className}`}
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS[m.category].className}`}
                       >
-                        {CATEGORY_LABELS.OVERVIEW.text}
+                        {CATEGORY_LABELS[m.category].text}
                       </span>
                     )}
                   </div>

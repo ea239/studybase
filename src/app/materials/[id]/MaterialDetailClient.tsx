@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
-import { CATEGORY_LABELS, DIFFICULTY_LABELS, OVERVIEW_TAG_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, DIFFICULTY_LABELS, STRUCTURED_TAG_LABELS } from "@/lib/labels";
 
 type KnowledgePoint = {
   id: string;
@@ -83,11 +83,11 @@ export function MaterialDetailClient({ id }: { id: string }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{material.filename}</h1>
-            {material.category === "OVERVIEW" && (
+            {material.category !== "NOTES" && CATEGORY_LABELS[material.category] && (
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS.OVERVIEW.className}`}
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS[material.category].className}`}
               >
-                {CATEGORY_LABELS.OVERVIEW.text}
+                {CATEGORY_LABELS[material.category].text}
               </span>
             )}
           </div>
@@ -134,14 +134,15 @@ export function MaterialDetailClient({ id }: { id: string }) {
       )}
 
       {(() => {
-        const isOverview = material.category === "OVERVIEW";
+        const isStructured = material.category === "OVERVIEW" || material.category === "LAB";
+        const knowledgeTabLabel = material.category === "LAB" ? "实验信息" : material.category === "OVERVIEW" ? "课程信息" : "知识点";
         return (
           <>
             <div className="flex gap-1 border-b border-neutral-200">
               <TabButton active={tab === "knowledge"} onClick={() => setTab("knowledge")}>
-                {isOverview ? "课程信息" : "知识点"} ({material.knowledgePoints.length})
+                {knowledgeTabLabel} ({material.knowledgePoints.length})
               </TabButton>
-              {!isOverview && (
+              {!isStructured && (
                 <TabButton active={tab === "questions"} onClick={() => setTab("questions")}>
                   题目 ({material.questions.length})
                 </TabButton>
@@ -152,12 +153,12 @@ export function MaterialDetailClient({ id }: { id: string }) {
             </div>
 
             {tab === "knowledge" &&
-              (isOverview ? (
-                <OverviewList items={material.knowledgePoints} onChanged={load} />
+              (isStructured ? (
+                <StructuredList items={material.knowledgePoints} onChanged={load} />
               ) : (
                 <KnowledgeList items={material.knowledgePoints} onChanged={load} />
               ))}
-            {tab === "questions" && !isOverview && <QuestionList items={material.questions} onChanged={load} />}
+            {tab === "questions" && !isStructured && <QuestionList items={material.questions} onChanged={load} />}
             {tab === "raw" && <RawPages pages={material.pages} />}
           </>
         );
@@ -198,9 +199,9 @@ function ConfidenceTag({ confidence, isAiGenerated }: { confidence: number | nul
   );
 }
 
-const OVERVIEW_TAG_ORDER = ["basic-info", "schedule", "grading", "deadline"];
+const STRUCTURED_TAG_ORDER = ["basic-info", "schedule", "lab-info", "requirement", "grading", "deadline"];
 
-function OverviewList({ items, onChanged }: { items: KnowledgePoint[]; onChanged: () => void }) {
+function StructuredList({ items, onChanged }: { items: KnowledgePoint[]; onChanged: () => void }) {
   async function remove(itemId: string) {
     await fetch(`/api/knowledge-points/${itemId}`, { method: "DELETE" });
     onChanged();
@@ -210,18 +211,18 @@ function OverviewList({ items, onChanged }: { items: KnowledgePoint[]; onChanged
 
   const groups = new Map<string, KnowledgePoint[]>();
   for (const item of items) {
-    const tag = item.tags?.split(",").find((t) => OVERVIEW_TAG_ORDER.includes(t)) ?? "other";
+    const tag = item.tags?.split(",").find((t) => STRUCTURED_TAG_ORDER.includes(t)) ?? "other";
     if (!groups.has(tag)) groups.set(tag, []);
     groups.get(tag)!.push(item);
   }
-  const orderedTags = [...OVERVIEW_TAG_ORDER, "other"].filter((t) => groups.has(t));
+  const orderedTags = [...STRUCTURED_TAG_ORDER, "other"].filter((t) => groups.has(t));
 
   return (
     <div className="flex flex-col gap-5">
       {orderedTags.map((tag) => (
         <div key={tag}>
           <h3 className="mb-2 text-sm font-semibold text-neutral-600">
-            {OVERVIEW_TAG_LABELS[tag] ?? "其他"}
+            {STRUCTURED_TAG_LABELS[tag] ?? "其他"}
           </h3>
           <div className="flex flex-col gap-2">
             {groups.get(tag)!.map((item) => (

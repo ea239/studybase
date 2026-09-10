@@ -15,12 +15,15 @@ export const DIFFICULTY_LABELS: Record<string, string> = {
 export const CATEGORY_LABELS: Record<string, { text: string; className: string }> = {
   NOTES: { text: "课程资料", className: "bg-neutral-100 text-neutral-600" },
   OVERVIEW: { text: "课程大纲/评分说明", className: "bg-purple-100 text-purple-700" },
+  LAB: { text: "实验/作业说明", className: "bg-teal-100 text-teal-700" },
 };
 
-// tags used on OVERVIEW-category knowledge points
-export const OVERVIEW_TAG_LABELS: Record<string, string> = {
+// tags used on OVERVIEW- and LAB-category knowledge points (grouped display)
+export const STRUCTURED_TAG_LABELS: Record<string, string> = {
   "basic-info": "基本信息",
   schedule: "课程进度",
+  "lab-info": "实验/作业信息",
+  requirement: "要求与提交方式",
   grading: "评分说明",
   deadline: "重要日期",
 };

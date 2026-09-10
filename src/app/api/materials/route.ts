@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   const courseId = (form.get("courseId") as string | null) || null;
   const chapterId = (form.get("chapterId") as string | null) || null;
   const categoryRaw = (form.get("category") as string | null) || "NOTES";
-  const category = categoryRaw === "OVERVIEW" ? "OVERVIEW" : "NOTES";
+  const category = categoryRaw === "OVERVIEW" || categoryRaw === "LAB" ? categoryRaw : "NOTES";
 
   const material = await prisma.material.create({
     data: {
