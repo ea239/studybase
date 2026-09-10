@@ -1,6 +1,6 @@
 import { createMcpHandler } from "mcp-handler";
 import { registerTools } from "@/lib/mcp/tools";
-import { verifyMcpToken } from "@/lib/mcp/auth";
+import { verifyMcpRequest } from "@/lib/mcp/auth";
 
 const mcpHandler = createMcpHandler(
   async (server) => {
@@ -9,11 +9,11 @@ const mcpHandler = createMcpHandler(
   { serverInfo: { name: "studybase", version: "0.1.0" } }
 );
 
-// A bare bearer token, not OAuth — see src/lib/mcp/auth.ts. Enough to stop
+// A bare shared secret, not OAuth — see src/lib/mcp/auth.ts. Enough to stop
 // randoms from finding this endpoint if the app is ever deployed publicly;
 // not real multi-user auth.
 async function authed(req: Request): Promise<Response> {
-  const ok = await verifyMcpToken(req.headers.get("authorization"));
+  const ok = await verifyMcpRequest(req);
   if (!ok) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,

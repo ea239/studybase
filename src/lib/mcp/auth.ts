@@ -24,9 +24,20 @@ export async function regenerateMcpToken(): Promise<string> {
   return token;
 }
 
-export async function verifyMcpToken(authorizationHeader: string | null): Promise<boolean> {
-  if (!authorizationHeader?.startsWith("Bearer ")) return false;
-  const provided = authorizationHeader.slice("Bearer ".length);
+// Accepts the token either as a normal "Authorization: Bearer <token>"
+// header, or as a "?token=" query parameter. The header is what a proper
+// MCP client sends; the query param exists because ChatGPT's custom
+// connector UI currently only offers "No authentication" or full OAuth —
+// no plain bearer-token field — so the only way to keep this endpoint from
+// being a bare public URL is to fold the secret into the URL itself.
+export async function verifyMcpRequest(req: Request): Promise<boolean> {
   const expected = await getOrCreateMcpToken();
-  return provided === expected;
+
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ") && authHeader.slice("Bearer ".length) === expected) {
+    return true;
+  }
+
+  const url = new URL(req.url);
+  return url.searchParams.get("token") === expected;
 }

@@ -142,7 +142,7 @@ export default function SettingsPage() {
         <div>
           <h2 className="font-semibold">ChatGPT / Claude 接入（MCP）</h2>
           <p className="mt-1 text-sm text-neutral-500">
-            把下面这个地址和密钥配置到 ChatGPT 的「Connectors」（自定义连接器）或 Claude 的远程 MCP 服务器里，就能让它直接查询你的资料库——按科目/章节搜索知识点和题目、查看原文出处，但不能修改或删除任何内容。
+            把下面的地址配置到 ChatGPT 的自定义连接器（Developer mode → Add custom connector）或 Claude 的远程 MCP 服务器里，就能让它直接查询你的资料库——按科目/章节搜索知识点和题目、查看原文出处，但不能修改或删除任何内容。
           </p>
         </div>
 
@@ -151,11 +151,15 @@ export default function SettingsPage() {
         ) : (
           <>
             <label className="flex flex-col gap-1 text-sm">
-              服务器地址（URL）
+              ChatGPT 用（Authentication 选 &ldquo;No authentication&rdquo;，密钥已拼进地址里）
               <div className="flex gap-2">
-                <input readOnly value={mcpUrl} className="flex-1 rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1.5 font-mono text-xs" />
+                <input
+                  readOnly
+                  value={`${mcpUrl}?token=${mcpToken}`}
+                  className="flex-1 rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1.5 font-mono text-xs"
+                />
                 <button
-                  onClick={() => copy(mcpUrl, "url")}
+                  onClick={() => copy(`${mcpUrl}?token=${mcpToken}`, "url")}
                   className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
                 >
                   {mcpCopied === "url" ? "已复制" : "复制"}
@@ -163,7 +167,10 @@ export default function SettingsPage() {
               </div>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              密钥（作为 Authorization: Bearer 请求头）
+              Claude / 支持自定义请求头的客户端用（服务器地址 + Authorization: Bearer 密钥）
+              <div className="flex gap-2">
+                <input readOnly value={mcpUrl} className="flex-1 rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1.5 font-mono text-xs" />
+              </div>
               <div className="flex gap-2">
                 <input readOnly value={mcpToken} className="flex-1 rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1.5 font-mono text-xs" />
                 <button
@@ -185,6 +192,9 @@ export default function SettingsPage() {
 
         <p className="text-xs text-neutral-500">
           注意：这个地址只有在 ChatGPT/Claude 的服务器能从公网访问到它时才能用——本机 localhost 地址它们连不进来。本地开发阶段可以用 ngrok / cloudflared 等内网穿透工具临时暴露出去测试；要长期使用需要把这个项目部署到有公网 HTTPS 地址的服务器上（比如 Vercel）。
+        </p>
+        <p className="text-xs text-neutral-500">
+          ChatGPT 的自定义连接器目前只支持 &ldquo;No authentication&rdquo; 或 OAuth，没有直接填请求头的选项，所以密钥只能拼进 URL 里（类似日历订阅链接的做法）——不如请求头安全，请勿把这个带密钥的地址分享给别人。
         </p>
       </div>
     </div>
