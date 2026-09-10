@@ -21,6 +21,7 @@ enum MaterialStatus {
 
 enum MaterialType {
   PDF
+  HTML
   // PPTX, DOCX, IMAGE planned for a later phase
 }
 

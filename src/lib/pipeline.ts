@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { readUpload } from "@/lib/storage";
 import { extractPdfPages } from "@/lib/pdf";
+import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
 import { getAiSettings } from "@/lib/ai/settings";
 
@@ -17,10 +18,15 @@ export async function processMaterial(materialId: string) {
   try {
     const material = await prisma.material.findUniqueOrThrow({ where: { id: materialId } });
     const fileBuffer = await readUpload(material.storagePath);
-    const pages = await extractPdfPages(fileBuffer);
+    const pages =
+      material.fileType === "HTML" ? await extractHtmlPages(fileBuffer) : await extractPdfPages(fileBuffer);
 
     if (pages.length === 0) {
-      throw new Error("未能从 PDF 中提取到任何文本（可能是扫描件，需要 OCR，暂不支持）");
+      throw new Error(
+        material.fileType === "HTML"
+          ? "未能从该网页中提取到任何文本"
+          : "未能从 PDF 中提取到任何文本（可能是扫描件，需要 OCR，暂不支持）"
+      );
     }
 
     // Raw text is ground truth — replace any stale pages from a prior run,

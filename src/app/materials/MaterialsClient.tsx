@@ -76,7 +76,7 @@ export function MaterialsClient({
   async function handleUpload() {
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
-      setUploadError("请先选择一个 PDF 文件");
+      setUploadError("请先选择一个 PDF 或 HTML 文件");
       return;
     }
     setUploading(true);
@@ -104,7 +104,12 @@ export function MaterialsClient({
       <section className="rounded-lg border border-neutral-200 bg-white p-4">
         <h2 className="mb-3 font-semibold">上传资料</h2>
         <div className="flex flex-col gap-3">
-          <input ref={fileInputRef} type="file" accept="application/pdf" className="text-sm" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,text/html,.pdf,.html,.htm"
+            className="text-sm"
+          />
 
           <div className="flex gap-3 text-sm">
             <label className="flex items-center gap-1.5">
@@ -192,7 +197,9 @@ export function MaterialsClient({
           >
             {uploading ? "上传中…" : "上传并自动整理"}
           </button>
-          <p className="text-xs text-neutral-500">目前仅支持 PDF。上传后会自动提取文字、生成摘要、知识点与题目。</p>
+          <p className="text-xs text-neutral-500">
+            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可）。上传后会自动提取文字、生成摘要、知识点与题目。
+          </p>
         </div>
       </section>
 

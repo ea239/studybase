@@ -36,9 +36,15 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
-  if (!file.name.toLowerCase().endsWith(".pdf")) {
+  const lowerName = file.name.toLowerCase();
+  const fileType = lowerName.endsWith(".pdf")
+    ? "PDF"
+    : lowerName.endsWith(".html") || lowerName.endsWith(".htm")
+      ? "HTML"
+      : null;
+  if (!fileType) {
     return NextResponse.json(
-      { error: "目前仅支持 PDF，其他格式将在后续阶段支持" },
+      { error: "目前仅支持 PDF 和 HTML 网页，其他格式将在后续阶段支持" },
       { status: 400 }
     );
   }
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
     data: {
       filename: file.name,
       storagePath: "", // filled in right after, once we have the material id
-      fileType: "PDF",
+      fileType,
       category,
       status: "PENDING",
       subjectId,
