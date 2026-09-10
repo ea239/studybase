@@ -13,6 +13,7 @@ const extractionSchema = z.object({
       title: z.string(),
       content: z.string(),
       sourcePage: z.number().int().nullable().optional(),
+      chapter: z.string().nullable().optional(),
       tags: z
         .array(z.string())
         .nullable()
@@ -28,6 +29,7 @@ const extractionSchema = z.object({
       answer: z.string(),
       explanation: z.string().nullable().optional(),
       sourcePage: z.number().int().nullable().optional(),
+      chapter: z.string().nullable().optional(),
       difficulty: z
         .enum(["EASY", "MEDIUM", "HARD"])
         .nullable()
@@ -64,13 +66,15 @@ Given the raw text of a document, page by page, extract:
 2. Knowledge points: definitions, formulas, key concepts, and worked examples. Each must cite the page number it came from.
 3. Questions: any exercises, practice problems, or quiz questions found in the text, with their answer and explanation if present. Each must cite the page number it came from. Do not invent questions that are not in the text — only extract ones that actually appear.
 
+For every knowledge point and question, also determine which chapter/unit/week it belongs to, using the actual titles, headers, or running headers that appear in the source text itself (e.g. a title slide reading "Chapter 3: Query Optimization", a running header, a slide footer showing a unit number, "第三章", "Week 5", "Unit 2"). Put this in a "chapter" field, using the chapter number and title as it literally appears in the source (e.g. "Chapter 3: Query Optimization"). A single document sometimes covers only part of a chapter, or spans two chapters — when that happens, different knowledge points/questions should get different "chapter" values reflecting which chapter each one is actually under, based on where in the document they appear. If the document gives no chapter/unit/week indication anywhere, leave "chapter" as null — do not guess or invent one.
+
 For every knowledge point and question, include a "confidence" score from 0 to 1 reflecting how certain you are about the page number and correctness of the extraction. Use a lower score when the source text is garbled, ambiguous, or you had to infer structure.
 
 Return JSON matching this shape exactly:
 {
   "summary": string,
-  "knowledgePoints": [{ "title": string, "content": string, "sourcePage": number, "tags": string[], "confidence": number }],
-  "questions": [{ "stem": string, "options": string[] | null, "answer": string, "explanation": string, "sourcePage": number, "difficulty": "EASY"|"MEDIUM"|"HARD", "confidence": number }]
+  "knowledgePoints": [{ "title": string, "content": string, "sourcePage": number, "chapter": string | null, "tags": string[], "confidence": number }],
+  "questions": [{ "stem": string, "options": string[] | null, "answer": string, "explanation": string, "sourcePage": number, "chapter": string | null, "difficulty": "EASY"|"MEDIUM"|"HARD", "confidence": number }]
 }`;
 
 // For overview documents (syllabus, grading breakdown, course schedule).

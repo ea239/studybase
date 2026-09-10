@@ -164,7 +164,7 @@ export function MaterialsClient({
               disabled={!selectedUploadSubject}
               className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm disabled:opacity-50"
             >
-              <option value="">不指定章节</option>
+              <option value="">章节（留空自动判断）</option>
               {selectedUploadSubject?.chapters.map((ch) => (
                 <option key={ch.id} value={ch.id}>
                   {ch.name}
@@ -186,7 +186,7 @@ export function MaterialsClient({
             {uploading ? "上传中…" : "上传并自动整理"}
           </button>
           <p className="text-xs text-neutral-500">
-            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可）。上传后会自动提取文字、生成摘要、知识点与题目。
+            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可）。上传后会自动提取文字、生成摘要、知识点与题目；「课程资料」类不指定章节时，AI 会根据文档里出现的标题/章节号自动判断归属章节（一份文件横跨多章时，不同内容会分别归入对应章节）。
           </p>
         </div>
       </section>

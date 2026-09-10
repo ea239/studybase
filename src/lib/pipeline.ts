@@ -4,6 +4,7 @@ import { extractPdfPages } from "@/lib/pdf";
 import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
 import { getAiSettings } from "@/lib/ai/settings";
+import { resolveChapter } from "@/lib/chapter-resolver";
 
 // Extraction below this confidence gets flagged for human review instead of
 // being silently trusted — see the "AI 分类可能出错" concern in the plan.
@@ -61,10 +62,32 @@ export async function processMaterial(materialId: string) {
     await prisma.knowledgePoint.deleteMany({ where: { materialId, isAiGenerated: true } });
     await prisma.question.deleteMany({ where: { materialId, isAiGenerated: true } });
 
+    // Chapter is auto-detected per item from headings/titles the AI found in
+    // the source text — one PDF can span multiple chapters. A manually
+    // chosen chapter at upload time always wins over auto-detection.
+    // resolveChapter must run one at a time (not Promise.all): concurrent
+    // calls for the same never-seen label would both create it and violate
+    // the (subjectId, name) unique constraint.
+    const chapterCache = new Map<string, string>();
+    async function resolveItemChapter(label?: string | null): Promise<string | null> {
+      if (material.chapterId) return material.chapterId;
+      if (!label || !material.subjectId) return null;
+      return resolveChapter(material.subjectId, label, chapterCache);
+    }
+
+    const kpChapterIds: (string | null)[] = [];
+    for (const kp of result.knowledgePoints) {
+      kpChapterIds.push(await resolveItemChapter(kp.chapter));
+    }
+    const qChapterIds: (string | null)[] = [];
+    for (const q of result.questions) {
+      qChapterIds.push(await resolveItemChapter(q.chapter));
+    }
+
     await prisma.knowledgePoint.createMany({
-      data: result.knowledgePoints.map((kp) => ({
+      data: result.knowledgePoints.map((kp, i) => ({
         materialId,
-        chapterId: material.chapterId,
+        chapterId: kpChapterIds[i],
         title: kp.title,
         content: kp.content,
         sourcePage: kp.sourcePage ?? null,
@@ -75,9 +98,9 @@ export async function processMaterial(materialId: string) {
     });
 
     await prisma.question.createMany({
-      data: result.questions.map((q) => ({
+      data: result.questions.map((q, i) => ({
         materialId,
-        chapterId: material.chapterId,
+        chapterId: qChapterIds[i],
         stem: q.stem,
         options: q.options ? JSON.stringify(q.options) : null,
         answer: q.answer,
@@ -88,6 +111,27 @@ export async function processMaterial(materialId: string) {
         isAiGenerated: true,
       })),
     });
+
+    // If the material itself has no chapter yet, adopt whichever chapter
+    // most of its items resolved to, so material-level lists/filters (which
+    // only show one chapter per material) have a sensible value too.
+    if (!material.chapterId) {
+      const counts = new Map<string, number>();
+      for (const id of [...kpChapterIds, ...qChapterIds]) {
+        if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      let topChapterId: string | null = null;
+      let topCount = 0;
+      for (const [chapterId, count] of counts) {
+        if (count > topCount) {
+          topChapterId = chapterId;
+          topCount = count;
+        }
+      }
+      if (topChapterId) {
+        await prisma.material.update({ where: { id: materialId }, data: { chapterId: topChapterId } });
+      }
+    }
 
     const lowConfidence = [...result.knowledgePoints, ...result.questions].some(
       (item) => (item.confidence ?? 1) < REVIEW_THRESHOLD
