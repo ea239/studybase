@@ -26,7 +26,15 @@ declare global {
  * ID is needed (no secret, no redirect URI) — the resulting ID token is
  * verified server-side and matched against the email allowlist.
  */
-export function GoogleButton({ clientId, onError }: { clientId: string; onError: (msg: string) => void }) {
+export function GoogleButton({
+  clientId,
+  onError,
+  onPending,
+}: {
+  clientId: string;
+  onError: (msg: string) => void;
+  onPending: (email: string) => void;
+}) {
   const holder = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
 
@@ -45,6 +53,9 @@ export function GoogleButton({ clientId, onError }: { clientId: string; onError:
           });
           if (!r.ok) {
             const data = await r.json().catch(() => ({}));
+            // A first-time sign-in is recorded but not yet allowed in; that is
+            // an expected outcome, not an error to shout about.
+            if (data.error === "pending") return onPending(data.email ?? "该账号");
             throw new Error(data.error ?? "登录失败");
           }
           const next = new URLSearchParams(window.location.search).get("next");
@@ -61,7 +72,7 @@ export function GoogleButton({ clientId, onError }: { clientId: string; onError:
       width: 320,
       text: "signin_with",
     });
-  }, [ready, clientId, onError]);
+  }, [ready, clientId, onError, onPending]);
 
   return (
     <>

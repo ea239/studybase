@@ -145,6 +145,20 @@ model Question {
   updatedAt DateTime @updatedAt
 }
 
+// Everyone who has signed in with Google. Access is not granted by having a
+// valid Google account — the owner has to approve each one, so a new sign-in
+// lands here as pending and can see nothing until then.
+model AppUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  picture   String?
+  isOwner   Boolean  @default(false)
+  approved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+}
+
 // A saved ask-AI thread. Kept server-side rather than in the browser so the
 // same conversation is there when the app is opened from another device.
 model Conversation {

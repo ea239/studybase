@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { NavTabs } from "@/components/NavTabs";
+import { SESSION_COOKIE, readSession } from "@/lib/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,10 +24,14 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/", label: "科目" },
   { href: "/materials", label: "资料库" },
-  { href: "/settings", label: "设置" },
 ];
+// Settings expose the AI credentials, the MCP token and user approvals, so the
+// entry point is owner-only — the middleware enforces it, this just hides it.
+const OWNER_NAV = [...NAV, { href: "/settings", label: "设置" }];
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const session = await readSession((await cookies()).get(SESSION_COOKIE)?.value);
+  const nav = session?.owner ? OWNER_NAV : NAV;
   return (
     <html
       lang="zh"
@@ -37,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="text-[15px] font-semibold tracking-tight">
               StudyBase <span className="text-neutral-400">学库</span>
             </Link>
-            <NavTabs items={NAV} />
+            <NavTabs items={nav} />
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>

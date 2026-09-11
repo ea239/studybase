@@ -4,17 +4,23 @@
 export const SESSION_COOKIE = "studybase_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
+export type Session = { email: string; owner: boolean; exp: number };
+
 function secret(): string {
   const value = process.env.AUTH_SECRET;
   if (!value) throw new Error("AUTH_SECRET is not set");
   return value;
 }
 
-function base64url(bytes: ArrayBuffer | Uint8Array): string {
-  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
-  for (const b of view) binary += String.fromCharCode(b);
+  for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(value: string): string {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  return atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
 }
 
 async function sign(payload: string): Promise<string> {
@@ -25,38 +31,35 @@ async function sign(payload: string): Promise<string> {
     false,
     ["sign"]
   );
-  return base64url(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)));
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return toBase64Url(new Uint8Array(mac));
 }
 
-/** Cookie value for a session that expires MAX_AGE_SECONDS from now. */
-export async function createSession(): Promise<{ value: string; maxAge: number }> {
-  const expires = Date.now() + MAX_AGE_SECONDS * 1000;
-  const payload = String(expires);
+function equals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+export async function createSession(email: string, owner: boolean) {
+  const session: Session = { email, owner, exp: Date.now() + MAX_AGE_SECONDS * 1000 };
+  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(session)));
   return { value: `${payload}.${await sign(payload)}`, maxAge: MAX_AGE_SECONDS };
 }
 
-export async function verifySession(cookie: string | undefined): Promise<boolean> {
-  if (!cookie) return false;
+/** Returns the session when the signature checks out and it hasn't expired. */
+export async function readSession(cookie: string | undefined): Promise<Session | null> {
+  if (!cookie) return null;
   const [payload, signature] = cookie.split(".");
-  if (!payload || !signature) return false;
+  if (!payload || !signature) return null;
+  if (!equals(await sign(payload), signature)) return null;
 
-  const expected = await sign(payload);
-  // Length-independent compare: bail before the loop only on length, which is
-  // not secret, and never early-exit on a mismatched byte.
-  if (expected.length !== signature.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  if (diff !== 0) return false;
-
-  const expires = Number(payload);
-  return Number.isFinite(expires) && expires > Date.now();
-}
-
-/** Constant-time-ish password comparison. */
-export function passwordMatches(input: string): boolean {
-  const expected = process.env.APP_PASSWORD ?? "";
-  if (!expected || input.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= input.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
+  try {
+    const session = JSON.parse(fromBase64Url(payload)) as Session;
+    if (!session.email || typeof session.exp !== "number" || session.exp <= Date.now()) return null;
+    return session;
+  } catch {
+    return null;
+  }
 }
