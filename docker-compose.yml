@@ -19,6 +19,9 @@ services:
     environment:
       # Absolute path inside the container; the file lives on the volume below.
       DATABASE_URL: file:/app/data/studybase.db
+      # Read from .env — the UI is public through the tunnel, so it needs a login.
+      APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
     volumes:
       - ./data:/app/data
       - ./src/data/uploads:/app/src/data/uploads
