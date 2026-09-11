@@ -83,9 +83,11 @@ function PreviewModal({ material, onClose }: { material: BrowserMaterial; onClos
           src={`/api/materials/${material.id}/file`}
           title={material.filename}
           className="min-h-0 flex-1 bg-neutral-100"
-          // Uploaded HTML is untrusted; the file route already sends a sandbox
-          // CSP, and this keeps the embed itself locked down too.
-          sandbox=""
+          // Only uploaded HTML is untrusted and needs the empty (fully
+          // restrictive) sandbox — the file route sandboxes it via CSP too. A
+          // PDF is rendered by the browser's own viewer, which an empty
+          // sandbox blocks outright ("This page has been blocked by Chrome").
+          sandbox={material.fileType === "HTML" ? "" : undefined}
         />
       </div>
     </div>,
