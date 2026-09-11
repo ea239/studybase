@@ -64,18 +64,18 @@ body {
    Only on wide screens — narrow ones keep the overlay, since there is no room
    to split. */
 :root {
-  --ask-panel-w: 400px;
+  --ask-panel-w: 420px;
 }
 
 @media (min-width: 1024px) {
   :root {
-    --ask-panel-w: 480px;
+    --ask-panel-w: 540px;
   }
 }
 
 @media (min-width: 1440px) {
   :root {
-    --ask-panel-w: 560px;
+    --ask-panel-w: 640px;
   }
 }
 
@@ -89,7 +89,7 @@ body {
   body[data-ask-open] main {
     max-width: none;
     padding-left: 2.5rem;
-    padding-right: calc(var(--ask-panel-w) + 2rem);
+    padding-right: calc(var(--ask-panel-w) + 2.5rem);
   }
 
   /* Keeps the reading column balanced in the freed-up half rather than

@@ -123,6 +123,29 @@ export async function POST(req: NextRequest) {
   const lang = body.lang === "en" ? "en" : "zh";
   const question = messages[messages.length - 1]?.content ?? "";
 
+  // Persist the thread so it can be reopened later (and from another device).
+  // A missing/stale id just starts a new thread rather than failing the ask.
+  let conversationId: string | undefined =
+    typeof body.conversationId === "string" ? body.conversationId : undefined;
+  if (conversationId) {
+    const exists = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { id: true } });
+    if (!exists) conversationId = undefined;
+  }
+  if (!conversationId) {
+    const created = await prisma.conversation.create({
+      data: {
+        title: question.slice(0, 60) || "新对话",
+        subjectId,
+        chapterId,
+      },
+      select: { id: true },
+    });
+    conversationId = created.id;
+  }
+  await prisma.conversationMessage.create({
+    data: { conversationId, role: "user", content: question, quote: quote ?? null },
+  });
+
   try {
     const { chapterPoints, relatedPoints } = await gatherCourseContext(subjectId, chapterId, question, quote);
 
@@ -146,15 +169,44 @@ export async function POST(req: NextRequest) {
     // Plain text stream: the client appends each chunk as it lands, so the
     // answer renders progressively instead of after the whole generation.
     const encoder = new TextEncoder();
+    const threadId = conversationId;
     const stream = new ReadableStream({
       async start(controller) {
+        let answer = "";
+        // Every controller call is guarded: once the client disconnects they
+        // throw, and an unguarded throw here would skip persisting an answer
+        // that was already generated (and paid for).
+        const push = (text: string) => {
+          try {
+            controller.enqueue(encoder.encode(text));
+          } catch {
+            // Client went away; keep draining so the answer still gets saved.
+          }
+        };
+
         try {
-          for await (const delta of deltas) controller.enqueue(encoder.encode(delta));
+          for await (const delta of deltas) {
+            answer += delta;
+            push(delta);
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : "生成中断";
-          controller.enqueue(encoder.encode(`\n\n[错误] ${message}`));
+          push(`\n\n[错误] ${message}`);
         } finally {
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            // Already closed by the client disconnecting.
+          }
+          // A partial answer is still worth keeping, an empty one is not.
+          if (answer.trim()) {
+            await prisma.conversationMessage
+              .create({ data: { conversationId: threadId, role: "assistant", content: answer } })
+              .catch(() => {});
+            await prisma.conversation
+              .update({ where: { id: threadId }, data: { updatedAt: new Date() } })
+              .catch(() => {});
+          }
         }
       },
     });
@@ -163,6 +215,8 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
+        // Lets the client attach follow-up turns to this same thread.
+        "X-Conversation-Id": threadId,
       },
     });
   } catch (err) {

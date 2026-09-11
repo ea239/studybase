@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { StatusBadge } from "@/components/StatusBadge";
-import { CATEGORY_LABELS } from "@/lib/labels";
+import { MaterialsBrowser } from "./MaterialsBrowser";
 
 // One row of the upload progress list. `status` mirrors the server's
 // MaterialStatus once uploaded; the two extra values cover the client-side
@@ -34,6 +33,7 @@ type Material = {
   filename: string;
   status: string;
   category: string;
+  fileType: string;
   errorMessage: string | null;
   createdAt: string;
   subject: { id: string; name: string } | null;
@@ -113,8 +113,6 @@ export function MaterialsClient({
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
-  const [subjectId, setSubjectId] = useState(initialSubjectId ?? "");
-  const [chapterId, setChapterId] = useState("");
 
   const [uploadSubjectId, setUploadSubjectId] = useState(initialSubjectId ?? "");
   const [uploadChapterId, setUploadChapterId] = useState("");
@@ -125,11 +123,9 @@ export function MaterialsClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadMaterials = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (subjectId) params.set("subjectId", subjectId);
-    if (chapterId) params.set("chapterId", chapterId);
     try {
-      const res = await fetch(`/api/materials?${params.toString()}`);
+      // No filter params: the browser below groups by subject itself.
+      const res = await fetch("/api/materials");
       if (!res.ok) throw new Error(`服务返回 ${res.status}`);
       setMaterials(await res.json());
       setListError(null);
@@ -140,7 +136,7 @@ export function MaterialsClient({
     } finally {
       setLoading(false);
     }
-  }, [subjectId, chapterId]);
+  }, []);
 
   useEffect(() => {
     loadMaterials();
@@ -198,7 +194,6 @@ export function MaterialsClient({
   }, [batchIds, batchActive, loadMaterials]);
 
   const selectedUploadSubject = subjects.find((s) => s.id === uploadSubjectId);
-  const filterSubject = subjects.find((s) => s.id === subjectId);
 
   async function handleUpload() {
     const files = Array.from(fileInputRef.current?.files ?? []);
@@ -350,38 +345,8 @@ export function MaterialsClient({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold">全部资料</h2>
-          <select
-            value={subjectId}
-            onChange={(e) => {
-              setSubjectId(e.target.value);
-              setChapterId("");
-            }}
-            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm"
-          >
-            <option value="">全部科目</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={chapterId}
-            onChange={(e) => setChapterId(e.target.value)}
-            disabled={!filterSubject || filterSubject.chapters.length === 0}
-            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm disabled:opacity-50"
-          >
-            <option value="">全部章节</option>
-            {filterSubject?.chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>
-                {ch.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <section className="flex flex-col gap-4">
+        <h2 className="font-semibold">全部资料</h2>
 
         {loading ? (
           <p className="text-sm text-neutral-500">加载中…</p>
@@ -395,38 +360,8 @@ export function MaterialsClient({
               重试
             </button>
           </div>
-        ) : materials.length === 0 ? (
-          <p className="text-sm text-neutral-500">没有符合条件的资料。</p>
         ) : (
-          <div className="flex flex-col divide-y divide-neutral-200/70 surface rounded-xl">
-            {materials.map((m) => (
-              <Link
-                key={m.id}
-                href={`/materials/${m.id}`}
-                className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-50"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="truncate font-medium">{m.filename}</div>
-                    {m.category !== "NOTES" && CATEGORY_LABELS[m.category] && (
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_LABELS[m.category].className}`}
-                      >
-                        {CATEGORY_LABELS[m.category].text}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-sm text-neutral-500">
-                    {m.subject?.name ?? "未分类"}
-                    {m.chapter ? ` · ${m.chapter.name}` : ""} · {m._count.pages} 页 · {m._count.knowledgePoints} 项 ·{" "}
-                    {m._count.questions} 道题
-                  </div>
-                  {m.errorMessage && <div className="text-xs text-amber-700">{m.errorMessage}</div>}
-                </div>
-                <StatusBadge status={m.status} />
-              </Link>
-            ))}
-          </div>
+          <MaterialsBrowser materials={materials} />
         )}
       </section>
     </div>

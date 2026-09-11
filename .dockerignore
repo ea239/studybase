@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.env*
+# Database and uploads come from mounted volumes, never baked into the image.
+prisma/dev.db
+prisma/dev.db-journal
+src/data

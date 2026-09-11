@@ -145,6 +145,35 @@ model Question {
   updatedAt DateTime @updatedAt
 }
 
+// A saved ask-AI thread. Kept server-side rather than in the browser so the
+// same conversation is there when the app is opened from another device.
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String
+  subjectId String?
+  chapterId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ConversationMessage[]
+
+  @@index([subjectId, updatedAt])
+}
+
+model ConversationMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // "user" | "assistant"
+  content        String
+  // The passage the question was asked about, kept so a reopened thread still
+  // shows what was being discussed.
+  quote          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
 // Server-side app settings (single-user, phase 1). Holds the active AI
 // provider configuration. Not encrypted at rest — fine for a personal/local
 // deployment, must change before this becomes multi-user.

@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Bundles a self-contained server (plus only the deps it traces) so the
+  // Docker image doesn't need the full node_modules tree.
+  output: "standalone",
   // pdf-parse (via pdfjs-dist) spawns a worker by resolving a file path at
   // runtime; letting the bundler process it breaks that resolution, so it
   // must run as plain Node code instead.

@@ -1,0 +1,42 @@
+services:
+  # Applies pending migrations, then exits. The app waits for it to succeed, so
+  # a schema change ships with the image instead of needing a manual step.
+  migrate:
+    build:
+      context: .
+      target: migrator
+    container_name: studybase-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: file:/app/data/studybase.db
+    volumes:
+      - ./data:/app/data
+
+  studybase:
+    build: .
+    container_name: studybase
+    restart: unless-stopped
+    environment:
+      # Absolute path inside the container; the file lives on the volume below.
+      DATABASE_URL: file:/app/data/studybase.db
+    volumes:
+      - ./data:/app/data
+      - ./src/data/uploads:/app/src/data/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      # Published on loopback only — the tunnel reaches it over the compose
+      # network, and Tailscale users go through the host.
+      - "127.0.0.1:3000:3000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: studybase-cloudflared
+    restart: unless-stopped
+    # Same compose network, so the public hostname's service URL is
+    # http://studybase:3000 — not localhost, which would mean the tunnel
+    # container itself.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - studybase

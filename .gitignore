@@ -43,3 +43,10 @@ next-env.d.ts
 src/data/
 prisma/dev.db
 prisma/dev.db-journal
+
+# Docker volume: SQLite database
+/data
+
+# Editor swap files (a .env swap holds the secrets in plain text)
+*.swp
+*.swo
