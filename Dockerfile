@@ -18,6 +18,10 @@ COPY . .
 # DATABASE_URL is only needed for `prisma generate` to resolve the datasource;
 # the real database is mounted at runtime.
 ENV DATABASE_URL="file:/app/data/studybase.db"
+# NEXT_PUBLIC_* is inlined into the client bundle at build time, so it has to
+# be present here rather than only at runtime.
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 RUN npx prisma generate && npm run build
 
 # Migrations run from here, not from the runtime image: the Prisma CLI pulls in

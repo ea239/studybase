@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { GoogleButton } from "./GoogleButton";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const showError = useCallback((msg: string) => setError(msg), []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +57,17 @@ export default function LoginPage() {
         >
           {busy ? "登录中…" : "登录"}
         </button>
+
+        {clientId && (
+          <>
+            <div className="flex items-center gap-3 text-xs text-neutral-400">
+              <span className="h-px flex-1 bg-neutral-900/10" />
+              或
+              <span className="h-px flex-1 bg-neutral-900/10" />
+            </div>
+            <GoogleButton clientId={clientId} onError={showError} />
+          </>
+        )}
       </form>
     </div>
   );
