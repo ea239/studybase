@@ -40,6 +40,7 @@ model Subject {
 
   chapters  Chapter[]
   materials Material[]
+  learnCourses LearnCourse[]
 }
 
 model Chapter {
@@ -77,6 +78,13 @@ model Material {
   chapter   Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
 
   summary   String? // AI-generated summary of the whole document
+
+  // Set when the file came from a LEARN sync rather than a manual upload.
+  // learnTopicId is LEARN's own topic id, and is what makes a re-sync
+  // idempotent; learnUpdatedAt is LEARN's last-modified stamp, so a file the
+  // instructor revises gets re-downloaded while unchanged ones are skipped.
+  learnTopicId   String?   @unique
+  learnUpdatedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,4 +202,26 @@ model ConversationMessage {
 model Setting {
   key   String @id
   value String
+}
+
+// A course on LEARN (D2L Brightspace), mirrored locally so the owner can pick
+// which ones to sync and which local Subject each one feeds. orgUnitId is
+// LEARN's identifier for the course offering and is stable across terms.
+model LearnCourse {
+  id        String @id @default(cuid())
+  orgUnitId String @unique
+  name      String
+  code      String?
+
+  // Nothing is downloaded until the owner enables the course and points it at
+  // a Subject — an un-mapped course would dump materials into "未分类".
+  enabled   Boolean @default(false)
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  lastSyncedAt DateTime?
+  lastResult   String? // short human-readable outcome of the last sync attempt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

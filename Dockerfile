@@ -9,6 +9,9 @@ FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+# playwright is a dev dependency used only by scripts/learn-login.mjs, which
+# runs on the owner's own machine — the image must not pull ~400MB of browsers.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci
 
 FROM base AS builder

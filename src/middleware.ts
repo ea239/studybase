@@ -9,7 +9,7 @@ const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/mcp"];
 
 // Settings hold the AI credentials and the MCP token, and approving users is
 // the owner's call — approved members get the study material, nothing more.
-const OWNER_ONLY_PREFIXES = ["/settings", "/api/settings", "/api/users"];
+const OWNER_ONLY_PREFIXES = ["/settings", "/api/settings", "/api/users", "/api/learn"];
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
