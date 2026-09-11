@@ -25,10 +25,10 @@ services:
       # Read from .env — the UI is public through the tunnel, so it needs a login.
       APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env}
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
-      # Google sign-in. The allowlist is what actually authorises someone —
-      # a valid Google token only proves which account it is.
+      # Google sign-in. A valid token only proves which account it is; this
+      # names the one account that is approved on sight and approves others.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      ALLOWED_GOOGLE_EMAILS: ${ALLOWED_GOOGLE_EMAILS:-}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
     volumes:
       - ./data:/app/data
       - ./src/data/uploads:/app/src/data/uploads
