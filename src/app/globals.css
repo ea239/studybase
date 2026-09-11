@@ -12,15 +12,145 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
+body {
+  /* Frosted panels only read as glass if there is something behind them, so
+     the canvas is a tinted slate base with two soft color blooms rather than
+     a near-white wash. */
+  background-color: #e8eaf0;
+  background-image:
+    radial-gradient(900px 600px at 12% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
+    radial-gradient(800px 600px at 92% 4%, rgba(14, 165, 233, 0.13), transparent 62%),
+    linear-gradient(180deg, #eef0f5 0%, #e6e9f0 55%, #e2e5ee 100%);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Frosted panel used for every card-like surface. Replaces the old opaque
+   white + hard gray border look. */
+.surface {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 14px 36px -18px rgba(16, 24, 40, 0.28);
+}
+
+/* Interactive variant: lifts slightly on hover. */
+.surface-interactive {
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.25s ease;
+}
+
+.surface-interactive:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 26px 48px -22px rgba(16, 24, 40, 0.38);
+}
+
+/* ---- Ask-AI split layout -------------------------------------------------
+   When the ask panel opens, the page hands its right side over to the panel
+   instead of being covered by it: the chapter nav collapses to the left and
+   the reading column widens into the freed space. Driven by a data attribute
+   on <body> so the server-rendered subject page needs no client wrapper.
+   Only on wide screens — narrow ones keep the overlay, since there is no room
+   to split. */
+:root {
+  --ask-panel-w: 400px;
+}
+
+@media (min-width: 1024px) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --ask-panel-w: 480px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media (min-width: 1440px) {
+  :root {
+    --ask-panel-w: 560px;
+  }
+}
+
+@media (min-width: 1024px) {
+  main {
+    transition:
+      max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+      padding-right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body[data-ask-open] main {
+    max-width: none;
+    padding-left: 2.5rem;
+    padding-right: calc(var(--ask-panel-w) + 2rem);
+  }
+
+  /* Keeps the reading column balanced in the freed-up half rather than
+     pinned to the window edge with a wide empty gutter on its right. */
+  [data-content-pane] {
+    transition:
+      max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+      margin 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body[data-ask-open] [data-content-pane] {
+    max-width: 46rem;
+    margin-inline: auto;
+  }
+
+  [data-chapter-nav] {
+    overflow: hidden;
+    transition:
+      width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.25s ease,
+      margin-right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body[data-ask-open] [data-chapter-nav] {
+    width: 0;
+    opacity: 0;
+    /* cancels the flex gap-8 the collapsed nav would otherwise still occupy */
+    margin-right: -2rem;
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main,
+  [data-chapter-nav] {
+    transition: none;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .surface-interactive {
+    animation: none;
+    transition: none;
+  }
+  .surface-interactive:hover {
+    transform: none;
+  }
 }

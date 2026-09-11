@@ -101,13 +101,13 @@ export function MaterialDetailClient({ id }: { id: string }) {
             href={`/api/materials/${id}/file`}
             target="_blank"
             rel="noreferrer"
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+            className="rounded-lg border border-neutral-200/80 bg-white/60 px-3 py-1.5 text-sm hover:bg-neutral-50"
           >
             查看原文
           </a>
           <button
             onClick={reprocess}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+            className="rounded-lg border border-neutral-200/80 bg-white/60 px-3 py-1.5 text-sm hover:bg-neutral-50"
           >
             重新处理
           </button>
@@ -125,7 +125,7 @@ export function MaterialDetailClient({ id }: { id: string }) {
       )}
 
       {material.summary && (
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="surface rounded-xl p-4">
           <h2 className="mb-1 font-semibold">摘要</h2>
           <p className="text-sm text-neutral-700">{material.summary}</p>
         </div>
@@ -224,7 +224,7 @@ function StructuredList({ items, onChanged }: { items: KnowledgePoint[]; onChang
           </h3>
           <div className="flex flex-col gap-2">
             {groups.get(tag)!.map((item) => (
-              <div key={item.id} className="rounded-lg border border-neutral-200 bg-white p-3">
+              <div key={item.id} className="surface rounded-xl p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium">{item.title}</div>
@@ -278,7 +278,7 @@ function KnowledgeList({ items, onChanged }: { items: KnowledgePoint[]; onChange
         editingId === kp.id ? (
           <EditKnowledgeCard key={kp.id} item={kp} onCancel={() => setEditingId(null)} onSave={save} />
         ) : (
-          <div key={kp.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+          <div key={kp.id} className="surface rounded-xl p-4">
             <div className="flex items-start justify-between gap-3">
               <h3 className="font-semibold">{kp.title}</h3>
               <div className="flex shrink-0 items-center gap-2">
@@ -327,22 +327,22 @@ function EditKnowledgeCard({
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm font-semibold"
+        className="w-full rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm font-semibold"
       />
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={4}
-        className="mt-2 w-full rounded-md border border-neutral-300 px-2 py-1 text-sm"
+        className="mt-2 w-full rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm"
       />
       <div className="mt-2 flex gap-2">
         <button
           onClick={() => onSave(item, title, content)}
-          className="rounded-md bg-neutral-900 px-3 py-1 text-xs font-medium text-white"
+          className="rounded-lg bg-neutral-900/90 transition-colors hover:bg-neutral-900 px-3 py-1 text-xs font-medium text-white"
         >
           保存
         </button>
-        <button onClick={onCancel} className="rounded-md border border-neutral-300 px-3 py-1 text-xs">
+        <button onClick={onCancel} className="rounded-lg border border-neutral-200/80 bg-white/60 px-3 py-1 text-xs">
           取消
         </button>
       </div>
@@ -366,7 +366,7 @@ function QuestionList({ items, onChanged }: { items: Question[]; onChanged: () =
         const options: string[] | null = q.options ? JSON.parse(q.options) : null;
         const isRevealed = revealed[q.id];
         return (
-          <div key={q.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+          <div key={q.id} className="surface rounded-xl p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="font-medium">{q.stem}</p>
               <div className="flex shrink-0 items-center gap-2">
@@ -421,7 +421,7 @@ function RawPages({ pages }: { pages: Page[] }) {
   return (
     <div className="flex flex-col gap-3">
       {pages.map((p) => (
-        <div key={p.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div key={p.id} className="surface rounded-xl p-4">
           <div className="mb-1 text-xs font-medium text-neutral-400">第 {p.pageNumber} 页</div>
           <pre className="whitespace-pre-wrap font-sans text-sm text-neutral-700">{p.rawText}</pre>
         </div>

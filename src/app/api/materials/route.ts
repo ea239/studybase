@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
-import { processMaterial } from "@/lib/pipeline";
+import { enqueueProcessMaterial, settleOrphanedProcessing } from "@/lib/pipeline";
 
 export async function GET(req: NextRequest) {
+  await settleOrphanedProcessing();
   const { searchParams } = new URL(req.url);
   const subjectId = searchParams.get("subjectId") ?? undefined;
   const chapterId = searchParams.get("chapterId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
   const category = searchParams.get("category") ?? undefined;
+  // Used to poll one upload batch regardless of the list's current filters.
+  const ids = searchParams.get("ids")?.split(",").filter(Boolean);
 
   const materials = await prisma.material.findMany({
     where: {
+      id: ids?.length ? { in: ids } : undefined,
       subjectId: subjectId || undefined,
       chapterId: chapterId || undefined,
       status: (status as never) || undefined,
@@ -67,9 +71,9 @@ export async function POST(req: NextRequest) {
   const storagePath = await saveUpload(material.id, file.name, buffer);
   await prisma.material.update({ where: { id: material.id }, data: { storagePath } });
 
-  // Fire-and-forget: phase 1 has no job queue, processing runs in-process.
-  // The client polls GET /api/materials/[id] for status.
-  void processMaterial(material.id);
+  // Fire-and-forget onto the in-process serial queue, so a batch upload gets
+  // parsed one file at a time. The client polls GET /api/materials for status.
+  void enqueueProcessMaterial(material.id);
 
   return NextResponse.json(material, { status: 201 });
 }

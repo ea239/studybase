@@ -50,6 +50,9 @@ model Chapter {
   subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
+  overview            String? // AI-generated study explanation, manually (re)generated from Settings
+  overviewGeneratedAt DateTime?
+
   materials       Material[]
   knowledgePoints KnowledgePoint[]
   questions       Question[]

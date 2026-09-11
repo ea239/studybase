@@ -5,6 +5,28 @@ import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CATEGORY_LABELS } from "@/lib/labels";
 
+// One row of the upload progress list. `status` mirrors the server's
+// MaterialStatus once uploaded; the two extra values cover the client-side
+// window before a material row exists.
+type BatchItem = {
+  name: string;
+  id: string | null;
+  status: "UPLOADING" | "UPLOAD_FAILED" | "PENDING" | "PROCESSING" | "DONE" | "NEEDS_REVIEW" | "FAILED";
+  error?: string;
+};
+
+const BATCH_LABELS: Record<BatchItem["status"], string> = {
+  UPLOADING: "上传中…",
+  UPLOAD_FAILED: "上传失败",
+  PENDING: "排队中",
+  PROCESSING: "解析中…",
+  DONE: "已完成",
+  NEEDS_REVIEW: "需人工确认",
+  FAILED: "解析失败",
+};
+
+const FINISHED: BatchItem["status"][] = ["DONE", "NEEDS_REVIEW", "FAILED", "UPLOAD_FAILED"];
+
 type Chapter = { id: string; name: string };
 type Subject = { id: string; name: string; chapters: Chapter[] };
 type Material = {
@@ -19,6 +41,68 @@ type Material = {
   _count: { knowledgePoints: number; questions: number; pages: number };
 };
 
+function BatchProgress({ batch, onDismiss }: { batch: BatchItem[]; onDismiss: () => void }) {
+  const done = batch.filter((b) => FINISHED.includes(b.status)).length;
+  const allDone = done === batch.length;
+  const pct = Math.round((done / batch.length) * 100);
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl border border-neutral-900/[0.08] bg-white/50 p-3.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">
+          {allDone ? "全部处理完成" : "正在处理"} {done}/{batch.length}
+        </span>
+        {allDone && (
+          <button onClick={onDismiss} className="text-xs text-neutral-400 transition-colors hover:text-neutral-700">
+            关闭
+          </button>
+        )}
+      </div>
+
+      <div className="h-1 overflow-hidden rounded-full bg-neutral-900/[0.08]">
+        <div
+          className="h-full rounded-full bg-neutral-900/70 transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <ul className="flex flex-col gap-1">
+        {batch.map((item, i) => {
+          const failed = item.status === "FAILED" || item.status === "UPLOAD_FAILED";
+          const active = item.status === "PROCESSING" || item.status === "UPLOADING";
+          return (
+            <li key={i} className="flex items-baseline gap-2 text-xs">
+              <span className="w-4 shrink-0 text-right text-neutral-300 tabular-nums">{i + 1}</span>
+              <span className={`min-w-0 flex-1 truncate ${active ? "text-neutral-900" : "text-neutral-600"}`}>
+                {item.name}
+              </span>
+              <span
+                className={`shrink-0 ${
+                  failed ? "text-red-600" : item.status === "DONE" ? "text-green-700" : "text-neutral-400"
+                }`}
+              >
+                {BATCH_LABELS[item.status]}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {batch.some((b) => b.error) && (
+        <ul className="flex flex-col gap-0.5">
+          {batch
+            .filter((b) => b.error)
+            .map((b, i) => (
+              <li key={i} className="text-xs text-amber-700">
+                {b.name}：{b.error}
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function MaterialsClient({
   subjects,
   initialSubjectId,
@@ -28,6 +112,7 @@ export function MaterialsClient({
 }) {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [subjectId, setSubjectId] = useState(initialSubjectId ?? "");
   const [chapterId, setChapterId] = useState("");
 
@@ -36,68 +121,136 @@ export function MaterialsClient({
   const [uploadCategory, setUploadCategory] = useState<"NOTES" | "OVERVIEW" | "LAB">("NOTES");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [batch, setBatch] = useState<BatchItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadMaterials = useCallback(async () => {
     const params = new URLSearchParams();
     if (subjectId) params.set("subjectId", subjectId);
     if (chapterId) params.set("chapterId", chapterId);
-    const res = await fetch(`/api/materials?${params.toString()}`);
-    const data = await res.json();
-    setMaterials(data);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/materials?${params.toString()}`);
+      if (!res.ok) throw new Error(`服务返回 ${res.status}`);
+      setMaterials(await res.json());
+      setListError(null);
+    } catch (err) {
+      // Without this the list would sit on "加载中…" forever — e.g. if the
+      // request lands while the dev server is restarting.
+      setListError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
   }, [subjectId, chapterId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
     loadMaterials();
   }, [loadMaterials]);
 
   // Poll while anything is still pending/processing, so status updates
-  // without the user having to refresh manually.
+  // without the user having to refresh manually. Also retries after a failed
+  // load, so a request that lost the server recovers on its own.
   useEffect(() => {
     const hasActive = materials.some((m) => m.status === "PENDING" || m.status === "PROCESSING");
-    if (!hasActive) return;
+    if (!hasActive && !listError) return;
     const t = setInterval(loadMaterials, 3000);
     return () => clearInterval(t);
-  }, [materials, loadMaterials]);
+  }, [materials, listError, loadMaterials]);
+
+  // Poll the batch by id, independent of the list filters below — a file
+  // uploaded under a different subject still needs to report its progress.
+  const batchIds = batch
+    .map((b) => b.id)
+    .filter((id): id is string => id != null)
+    .join(",");
+  const batchActive = batch.some((b) => !FINISHED.includes(b.status));
+
+  useEffect(() => {
+    if (!batchIds || !batchActive) return;
+    let cancelled = false;
+    const tick = async () => {
+      let rows: Material[];
+      try {
+        const res = await fetch(`/api/materials?ids=${batchIds}`);
+        if (!res.ok) return; // transient — the next tick retries
+        rows = await res.json();
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      setBatch((b) =>
+        b.map((item) => {
+          if (!item.id) return item;
+          const row = byId.get(item.id);
+          // Row vanished (deleted elsewhere) — settle it instead of leaving the
+          // item polling a material that will never report again.
+          if (!row) return { ...item, status: "FAILED", error: "资料已不存在" };
+          return { ...item, status: row.status as BatchItem["status"], error: row.errorMessage ?? undefined };
+        })
+      );
+      loadMaterials();
+    };
+    const t = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [batchIds, batchActive, loadMaterials]);
 
   const selectedUploadSubject = subjects.find((s) => s.id === uploadSubjectId);
   const filterSubject = subjects.find((s) => s.id === subjectId);
 
   async function handleUpload() {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      setUploadError("请先选择一个 PDF 或 HTML 文件");
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    if (files.length === 0) {
+      setUploadError("请先选择 PDF 或 HTML 文件（可多选）");
       return;
     }
     setUploading(true);
     setUploadError(null);
-    const form = new FormData();
-    form.append("file", file);
-    form.append("category", uploadCategory);
-    if (uploadSubjectId) form.append("subjectId", uploadSubjectId);
-    if (uploadChapterId) form.append("chapterId", uploadChapterId);
+    setBatch(files.map((f) => ({ name: f.name, id: null, status: "UPLOADING" })));
 
-    const res = await fetch("/api/materials", { method: "POST", body: form });
-    setUploading(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setUploadError(data.error ?? "上传失败");
-      return;
+    // Uploaded one at a time so the list fills in visibly and the server
+    // queue receives them in the order shown.
+    for (const [i, file] of files.entries()) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("category", uploadCategory);
+      if (uploadSubjectId) form.append("subjectId", uploadSubjectId);
+      if (uploadChapterId) form.append("chapterId", uploadChapterId);
+
+      try {
+        const res = await fetch("/api/materials", { method: "POST", body: form });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? "上传失败");
+        setBatch((b) =>
+          b.map((item, idx) => (idx === i ? { ...item, id: data.id, status: "PENDING" } : item))
+        );
+      } catch (err) {
+        setBatch((b) =>
+          b.map((item, idx) =>
+            idx === i
+              ? { ...item, status: "UPLOAD_FAILED", error: err instanceof Error ? err.message : "上传失败" }
+              : item
+          )
+        );
+      }
     }
+
+    setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     loadMaterials();
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-neutral-200 bg-white p-4">
+      <section className="surface rounded-xl p-4">
         <h2 className="mb-3 font-semibold">上传资料</h2>
         <div className="flex flex-col gap-3">
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             accept="application/pdf,text/html,.pdf,.html,.htm"
             className="text-sm"
           />
@@ -149,7 +302,7 @@ export function MaterialsClient({
                 setUploadSubjectId(e.target.value);
                 setUploadChapterId("");
               }}
-              className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+              className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5 text-sm"
             >
               <option value="">不指定科目</option>
               {subjects.map((s) => (
@@ -162,7 +315,7 @@ export function MaterialsClient({
               value={uploadChapterId}
               onChange={(e) => setUploadChapterId(e.target.value)}
               disabled={!selectedUploadSubject}
-              className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm disabled:opacity-50"
+              className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5 text-sm disabled:opacity-50"
             >
               <option value="">章节（留空自动判断）</option>
               {selectedUploadSubject?.chapters.map((ch) => (
@@ -174,19 +327,25 @@ export function MaterialsClient({
           </div>
           {subjects.length === 0 && (
             <p className="text-xs text-neutral-500">
-              还没有科目/章节，可以先去 <Link href="/subjects" className="text-blue-600 hover:underline">全部科目</Link> 创建，也可以先不分类直接上传。
+              还没有科目，可以先去 <Link href="/" className="text-blue-600 hover:underline">科目总览</Link> 创建，也可以先不分类直接上传。
             </p>
           )}
           {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+          {/* Only the upload itself blocks the button. Parsing continues in a
+              server-side queue, so more files can be queued meanwhile — and a
+              job that never reports back can't lock the button forever. */}
           <button
             onClick={handleUpload}
             disabled={uploading}
-            className="w-fit rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="w-fit rounded-lg bg-neutral-900/90 transition-colors hover:bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {uploading ? "上传中…" : "上传并自动整理"}
           </button>
+
+          {batch.length > 0 && <BatchProgress batch={batch} onDismiss={() => setBatch([])} />}
+
           <p className="text-xs text-neutral-500">
-            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可）。上传后会自动提取文字、生成摘要、知识点与题目；「课程资料」类不指定章节时，AI 会根据文档里出现的标题/章节号自动判断归属章节（一份文件横跨多章时，不同内容会分别归入对应章节）。
+            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可），可一次多选。文件会按选中顺序逐个解析——提取文字、生成摘要、知识点与题目；「课程资料」类不指定章节时，AI 会根据文档里出现的标题/章节号自动判断归属章节（一份文件横跨多章时，不同内容会分别归入对应章节）。
           </p>
         </div>
       </section>
@@ -200,7 +359,7 @@ export function MaterialsClient({
               setSubjectId(e.target.value);
               setChapterId("");
             }}
-            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm"
           >
             <option value="">全部科目</option>
             {subjects.map((s) => (
@@ -213,7 +372,7 @@ export function MaterialsClient({
             value={chapterId}
             onChange={(e) => setChapterId(e.target.value)}
             disabled={!filterSubject || filterSubject.chapters.length === 0}
-            className="rounded-md border border-neutral-300 px-2 py-1 text-sm disabled:opacity-50"
+            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1 text-sm disabled:opacity-50"
           >
             <option value="">全部章节</option>
             {filterSubject?.chapters.map((ch) => (
@@ -226,10 +385,20 @@ export function MaterialsClient({
 
         {loading ? (
           <p className="text-sm text-neutral-500">加载中…</p>
+        ) : listError ? (
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-red-600">加载失败：{listError}</p>
+            <button
+              onClick={loadMaterials}
+              className="rounded-lg border border-neutral-200/80 bg-white/60 px-3 py-1 text-xs transition-colors hover:bg-white"
+            >
+              重试
+            </button>
+          </div>
         ) : materials.length === 0 ? (
           <p className="text-sm text-neutral-500">没有符合条件的资料。</p>
         ) : (
-          <div className="flex flex-col divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white">
+          <div className="flex flex-col divide-y divide-neutral-200/70 surface rounded-xl">
             {materials.map((m) => (
               <Link
                 key={m.id}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiSettings, saveAiSettings, redact } from "@/lib/ai/settings";
-import type { AiProvider } from "@/lib/ai/types";
+import { OPENCODE_GO_BASE_URL, type AiProvider } from "@/lib/ai/types";
 
 export async function GET() {
   const settings = await getAiSettings();
@@ -11,7 +11,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const provider = body.provider as AiProvider;
-  if (!["openai", "anthropic", "custom"].includes(provider)) {
+  if (!["openai", "anthropic", "custom", "opencode"].includes(provider)) {
     return NextResponse.json({ error: "invalid provider" }, { status: 400 });
   }
   const model = String(body.model ?? "").trim();
@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
     provider,
     apiKey,
     model,
-    baseUrl: provider === "custom" ? String(body.baseUrl) : undefined,
+    translateModel: String(body.translateModel ?? "").trim() || undefined,
+    baseUrl: provider === "opencode" ? OPENCODE_GO_BASE_URL : provider === "custom" ? String(body.baseUrl) : undefined,
   });
   return NextResponse.json({ ok: true });
 }

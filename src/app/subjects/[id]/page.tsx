@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DIFFICULTY_LABELS, STRUCTURED_TAG_LABELS } from "@/lib/labels";
+import ChapterReader from "./ChapterReader";
+import { AskAI } from "@/components/AskAI";
+import type { ChapterOverviewContent } from "@/lib/ai/chapterOverview";
 
 export const dynamic = "force-dynamic";
 
@@ -12,16 +15,30 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "lab", label: "Lab" },
   { key: "info", label: "课程信息" },
 ];
+const OTHER_TABS = TABS.filter((t) => t.key !== "lecture");
+
+// Only the current note-style format renders. Anything older (the v1 prose
+// blocks) reads as "not generated yet" so it gets regenerated on demand.
+function parseOverview(raw: string | null | undefined): ChapterOverviewContent | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.version === 2 && Array.isArray(parsed.sections)) return parsed as ChapterOverviewContent;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function SubjectPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; chapter?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, chapter: chapterParam } = await searchParams;
   const tab: Tab = (TABS.find((t) => t.key === tabParam)?.key ?? "lecture") as Tab;
 
   const subject = await prisma.subject.findUnique({
@@ -43,35 +60,109 @@ export default async function SubjectPage({
   const labMaterials = subject.materials.filter((m) => m.category === "LAB");
   const overviewMaterials = subject.materials.filter((m) => m.category === "OVERVIEW");
 
-  return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-semibold">{subject.name}</h1>
+  const lectureGroups = groupByChapter(
+    subject.chapters,
+    notesMaterials.map((m) => ({ id: m.id, filename: m.filename, chapterId: m.chapterId, items: m.knowledgePoints }))
+  );
+  const groupKey = (chapter: Chapter | null) => chapter?.id ?? "unassigned";
+  const defaultKey = lectureGroups.length > 0 ? groupKey(lectureGroups[0].chapter) : null;
+  const activeKey = chapterParam ?? defaultKey;
+  const selectedGroup = lectureGroups.find((g) => groupKey(g.chapter) === activeKey);
 
-      <div className="flex gap-1 border-b border-neutral-200">
-        {TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={`/subjects/${id}?tab=${t.key}`}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-              tab === t.key
-                ? "border-neutral-900 text-neutral-900"
-                : "border-transparent text-neutral-500 hover:text-neutral-800"
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
+  const navItem = (active: boolean) =>
+    `shrink-0 snap-start rounded-xl px-3 py-2 text-sm whitespace-nowrap transition-all duration-200 lg:whitespace-normal ${
+      active
+        ? "bg-white/80 font-medium text-neutral-900 shadow-[0_1px_2px_rgba(16,24,40,0.05),0_8px_20px_-14px_rgba(16,24,40,0.3)]"
+        : "text-neutral-500 hover:bg-white/60 hover:text-neutral-900"
+    }`;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="animate-fade-up">
+        <Link href="/" className="text-xs text-neutral-400 transition-colors hover:text-neutral-700">
+          ← 科目总览
+        </Link>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{subject.name}</h1>
       </div>
 
-      {tab === "lecture" && <LectureOutline chapters={subject.chapters} materials={notesMaterials} />}
-      {tab === "exercises" && <Exercises chapters={subject.chapters} materials={notesMaterials} />}
-      {tab === "lab" && <LabList materials={labMaterials} />}
-      {tab === "info" && <CourseInfo materials={overviewMaterials} />}
+      <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
+        {/* Phone: a horizontally scrollable strip above the content. Desktop:
+            the sticky 208px sidebar. */}
+        <nav
+          data-chapter-nav
+          className="animate-fade-up -mx-4 flex snap-x gap-1 overflow-x-auto px-4 pb-1 lg:sticky lg:top-20 lg:mx-0 lg:w-52 lg:shrink-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-0"
+        >
+          <div className="hidden px-3 text-xs font-medium tracking-wide text-neutral-400 uppercase lg:mb-1 lg:block">章节</div>
+          {lectureGroups.length === 0 && <p className="px-3 text-sm text-neutral-400">暂无章节</p>}
+          {lectureGroups.map(({ chapter }) => {
+            const key = groupKey(chapter);
+            const active = tab === "lecture" && key === activeKey;
+            return (
+              <Link
+                key={key}
+                href={`/subjects/${id}?tab=lecture&chapter=${key}`}
+                className={navItem(active)}
+              >
+                {chapter?.name ?? "其他内容"}
+              </Link>
+            );
+          })}
+
+          <div className="hidden px-3 text-xs font-medium tracking-wide text-neutral-400 uppercase lg:mt-5 lg:mb-1 lg:block">其他</div>
+          {OTHER_TABS.map((t) => (
+            <Link key={t.key} href={`/subjects/${id}?tab=${t.key}`} className={navItem(tab === t.key)}>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div data-content-pane className="animate-fade-up min-w-0 flex-1">
+          {tab === "lecture" &&
+            (lectureGroups.length === 0 ? (
+              <p className="text-sm text-neutral-500">
+                还没有课程资料。去
+                <Link href="/materials" className="text-blue-600 hover:underline">
+                  资料库
+                </Link>
+                上传讲义/笔记，AI 会自动生成大纲。
+              </p>
+            ) : (
+              selectedGroup && (
+                <ChapterReader
+                  // Remount per chapter: ChapterReader seeds state from these
+                  // props, and without a new key React reuses the instance, so
+                  // switching chapters kept showing the previous chapter's notes.
+                  key={selectedGroup.chapter?.id ?? "unassigned"}
+                  chapterId={selectedGroup.chapter?.id ?? null}
+                  chapterName={selectedGroup.chapter?.name ?? "其他内容"}
+                  initialOverview={parseOverview(selectedGroup.chapter?.overview)}
+                  initialGeneratedAt={selectedGroup.chapter?.overviewGeneratedAt?.toISOString() ?? null}
+                  entries={selectedGroup.entries}
+                />
+              )
+            ))}
+          {tab === "exercises" && <Exercises chapters={subject.chapters} materials={notesMaterials} />}
+          {tab === "lab" && <LabList materials={labMaterials} />}
+          {tab === "info" && <CourseInfo materials={overviewMaterials} />}
+        </div>
+      </div>
+
+      <AskAI
+        context={`${subject.name} — ${selectedGroup?.chapter?.name ?? ""}`}
+        subjectId={subject.id}
+        chapterId={selectedGroup?.chapter?.id ?? null}
+      />
     </div>
   );
 }
 
-type Chapter = { id: string; name: string; order: number };
+type Chapter = {
+  id: string;
+  name: string;
+  order: number;
+  overview: string | null;
+  overviewGeneratedAt: Date | null;
+};
 type KnowledgePoint = {
   id: string;
   title: string;
@@ -127,45 +218,6 @@ function groupByChapter<T extends { chapterId: string | null }>(
   return ordered;
 }
 
-function LectureOutline({ chapters, materials }: { chapters: Chapter[]; materials: Material[] }) {
-  const grouped = groupByChapter(
-    chapters,
-    materials.map((m) => ({ id: m.id, filename: m.filename, chapterId: m.chapterId, items: m.knowledgePoints }))
-  );
-
-  if (materials.length === 0) {
-    return (
-      <p className="text-sm text-neutral-500">
-        还没有课程资料。去<Link href="/materials" className="text-blue-600 hover:underline">资料库</Link>上传讲义/笔记，AI 会自动生成大纲。
-      </p>
-    );
-  }
-  if (grouped.length === 0) {
-    return <p className="text-sm text-neutral-500">资料还在处理中，或未能提取出知识点。</p>;
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      {grouped.map(({ chapter, entries }) => (
-        <div key={chapter?.id ?? "unassigned"}>
-          <h2 className="mb-2 font-semibold">{chapter?.name ?? "未分配章节"}</h2>
-          <div className="flex flex-col gap-1">
-            {entries.map(({ materialId, materialName, item }) => (
-              <details key={item.id} className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
-                <summary className="cursor-pointer text-sm font-medium">{item.title}</summary>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">{item.content}</p>
-                <div className="mt-2">
-                  <SourceLink materialId={materialId} materialName={materialName} page={item.sourcePage} />
-                </div>
-              </details>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function Exercises({ chapters, materials }: { chapters: Chapter[]; materials: Material[] }) {
   const grouped = groupByChapter(
     chapters,
@@ -192,7 +244,7 @@ function Exercises({ chapters, materials }: { chapters: Chapter[]; materials: Ma
             {entries.map(({ materialId, materialName, item }) => {
               const options: string[] | null = item.options ? JSON.parse(item.options) : null;
               return (
-                <details key={item.id} className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                <details key={item.id} className="surface rounded-xl px-3 py-2">
                   <summary className="cursor-pointer text-sm font-medium">{item.stem}</summary>
                   {options && (
                     <ul className="mt-2 flex flex-col gap-1 text-sm text-neutral-700">
@@ -255,7 +307,7 @@ function LabList({ materials }: { materials: Material[] }) {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-neutral-500">共 {materials.length} 个 lab</p>
       {materials.map((m) => (
-        <div key={m.id} className="rounded-lg border border-neutral-200 bg-white p-4">
+        <div key={m.id} className="surface rounded-xl p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-semibold">{m.filename}</h3>
             <Link href={`/materials/${m.id}`} className="text-xs text-blue-600 hover:underline">
@@ -308,7 +360,7 @@ function CourseInfo({ materials }: { materials: Material[] }) {
           <h2 className="mb-2 font-semibold">{STRUCTURED_TAG_LABELS[tag] ?? "其他"}</h2>
           <div className="flex flex-col gap-2">
             {items.map((item) => (
-              <div key={item.id} className="rounded-lg border border-neutral-200 bg-white p-3">
+              <div key={item.id} className="surface rounded-xl p-3">
                 <div className="text-sm font-medium">{item.title}</div>
                 <div className="text-sm text-neutral-700">{item.content}</div>
                 <div className="mt-1">
