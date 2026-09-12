@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { readUpload } from "@/lib/storage";
+import { officePdfBuffer } from "@/lib/office";
 import { extractPdfPages } from "@/lib/pdf";
 import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
@@ -221,7 +222,12 @@ export async function processMaterial(materialId: string) {
 
   try {
     const material = await prisma.material.findUniqueOrThrow({ where: { id: materialId } });
-    const fileBuffer = await readUpload(material.storagePath);
+    // Office documents are converted to PDF first; everything after this point
+    // only ever sees PDF or HTML.
+    const fileBuffer =
+      material.fileType === "OFFICE"
+        ? await officePdfBuffer(material.id, material.storagePath)
+        : await readUpload(material.storagePath);
     const pages =
       material.fileType === "HTML" ? await extractHtmlPages(fileBuffer) : await extractPdfPages(fileBuffer);
 

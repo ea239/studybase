@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { officePdfRelativePath } from "@/lib/office";
 import { renderPdfPage } from "@/lib/pdf-images";
 
 export async function GET(
@@ -14,11 +15,18 @@ export async function GET(
     select: { storagePath: true, fileType: true },
   });
   if (!material) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (material.fileType !== "PDF") {
+  if (material.fileType === "HTML") {
     return NextResponse.json({ error: "only PDF pages can be rendered" }, { status: 400 });
   }
 
-  const png = await renderPdfPage(id, material.storagePath, pageNumber);
+  // An Office document's figures come from the PDF it was converted to, which
+  // is the document that was actually parsed and cited.
+  const pdfPath =
+    material.fileType === "OFFICE"
+      ? await officePdfRelativePath(id, material.storagePath)
+      : material.storagePath;
+
+  const png = await renderPdfPage(id, pdfPath, pageNumber);
   if (!png) return NextResponse.json({ error: "render failed" }, { status: 404 });
 
   return new NextResponse(new Uint8Array(png), {

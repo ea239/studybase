@@ -246,7 +246,7 @@ export function MaterialsClient({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="application/pdf,text/html,.pdf,.html,.htm"
+            accept=".pdf,.html,.htm,.ppt,.pptx,.doc,.docx,.odp,.odt"
             className="text-sm"
           />
 
@@ -340,7 +340,7 @@ export function MaterialsClient({
           {batch.length > 0 && <BatchProgress batch={batch} onDismiss={() => setBatch([])} />}
 
           <p className="text-xs text-neutral-500">
-            支持 PDF 和 HTML 网页（从浏览器另存为「网页，仅 HTML」即可），可一次多选。文件会按选中顺序逐个解析——提取文字、生成摘要、知识点与题目；「课程资料」类不指定章节时，AI 会根据文档里出现的标题/章节号自动判断归属章节（一份文件横跨多章时，不同内容会分别归入对应章节）。
+            支持 PDF、HTML 网页（从浏览器另存为「网页，仅 HTML」即可），以及 PPT / Word 文档（会先转成 PDF 再解析），可一次多选。文件会按选中顺序逐个解析——提取文字、生成摘要、知识点与题目；「课程资料」类不指定章节时，AI 会根据文档里出现的标题/章节号自动判断归属章节（一份文件横跨多章时，不同内容会分别归入对应章节）。
           </p>
         </div>
       </section>

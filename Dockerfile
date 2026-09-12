@@ -43,7 +43,15 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 # poppler-utils supplies pdftoppm, used to render the slide behind a cited page.
-RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils \
+#
+# LibreOffice converts the PowerPoint and Word documents courses post — an
+# outline posted as .ppt otherwise takes that course's whole schedule with it.
+# Only the Impress and Writer filters are installed, without recommends, which
+# leaves out the Java runtime and the desktop integration neither needs.
+# fonts-dejavu-core keeps converted slides from falling back to a substitute
+# font and reflowing.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      poppler-utils libreoffice-impress libreoffice-writer fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
 
 # Next's standalone bundle, plus the assets it does not trace.

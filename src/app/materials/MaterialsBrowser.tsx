@@ -64,7 +64,7 @@ function PreviewModal({ material, onClose }: { material: BrowserMaterial; onClos
               查看解析结果
             </Link>
             <a
-              href={`/api/materials/${material.id}/file`}
+              href={`/api/materials/${material.id}/file?original=1`}
               download={material.filename}
               className="rounded-lg px-2 py-1 text-xs text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900"
             >
@@ -150,7 +150,7 @@ export function MaterialsBrowser({ materials }: { materials: BrowserMaterial[] }
                 )}
               </button>
               <a
-                href={`/api/materials/${m.id}/file`}
+                href={`/api/materials/${m.id}/file?original=1`}
                 download={m.filename}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`下载 ${m.filename}`}

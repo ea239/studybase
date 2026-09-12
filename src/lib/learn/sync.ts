@@ -2,13 +2,15 @@ import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
 import { enqueueProcessMaterial } from "@/lib/pipeline";
 import { LearnAuthError, downloadTopic, listCourses, listTopics, type LearnTopic } from "./client";
+import { isOfficeFile } from "@/lib/office";
 
-// The parse pipeline only understands these two today; everything else on
-// LEARN (pptx, zip, mp4, …) is skipped rather than imported as a dead row.
+// Everything else on LEARN (zip, mp4, sql, …) is skipped rather than imported
+// as a dead row.
 function fileTypeOf(name: string) {
   const n = name.toLowerCase();
   if (n.endsWith(".pdf")) return "PDF" as const;
   if (n.endsWith(".html") || n.endsWith(".htm")) return "HTML" as const;
+  if (isOfficeFile(n)) return "OFFICE" as const;
   return null;
 }
 

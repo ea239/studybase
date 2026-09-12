@@ -24,7 +24,11 @@ enum MaterialStatus {
 enum MaterialType {
   PDF
   HTML
-  // PPTX, DOCX, IMAGE planned for a later phase
+  // PowerPoint and Word, converted to PDF before parsing. Courses post
+  // outlines and lab sheets in these formats, and a dropped outline takes the
+  // course's whole schedule with it.
+  OFFICE
+  // IMAGE planned for a later phase
 }
 
 enum MaterialCategory {

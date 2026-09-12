@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
 import { enqueueProcessMaterial, settleOrphanedProcessing } from "@/lib/pipeline";
+import { isOfficeFile } from "@/lib/office";
 
 export async function GET(req: NextRequest) {
   await settleOrphanedProcessing();
@@ -42,10 +43,12 @@ export async function POST(req: NextRequest) {
     ? "PDF"
     : lowerName.endsWith(".html") || lowerName.endsWith(".htm")
       ? "HTML"
-      : null;
+      : isOfficeFile(lowerName)
+        ? "OFFICE"
+        : null;
   if (!fileType) {
     return NextResponse.json(
-      { error: "目前仅支持 PDF 和 HTML 网页，其他格式将在后续阶段支持" },
+      { error: "目前支持 PDF、HTML 网页，以及 PPT/Word 文档，其他格式将在后续阶段支持" },
       { status: 400 }
     );
   }
