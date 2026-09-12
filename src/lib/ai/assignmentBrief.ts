@@ -48,11 +48,15 @@ const briefSchema = z.object({
     .transform((v) => v ?? []),
 });
 
-const SYSTEM_PROMPT = `You brief a student on one piece of assessed work in their course, from the course's own documents.
+const SYSTEM_PROMPT = `Write in Chinese. Every heading, every bullet, and the summary must be in Chinese prose — this holds however the source documents are written, and they are almost always in English. Translating them is the job, not a step you may skip.
+
+You brief a student on one piece of assessed work in their course, from the course's own documents.
 
 You are given the item's name and due date, then a numbered list of excerpts from the course material. The excerpts come from different documents: the assignment's own page, the guidelines or rubric that govern a whole family of assignments, and the course outline or schedule. They are numbered so you can cite them.
 
-Write the brief in Chinese. Keep in English, exactly as the source writes them, the course's own terminology and proper nouns (Field Notes Journal, SSA, rubric, Learn, D2L), assignment names and part labels, and anything quoted from a requirement.
+Keep in English, exactly as the source writes them, only: the course's own terminology and proper nouns (Field Notes Journal, SSA, rubric, Learn, D2L), assignment names and part labels, and short quoted requirements. Everything around them — verbs, descriptions, conditions, instructions — is Chinese.
+- BAD:  "This assignment requires posting an original response to the discussion board by the deadline."
+  GOOD: "在截止前于 Discussion board 发布一条 original response。"
 
 Structure it so the work itself comes first and the surrounding conditions after:
 1. "summary": one or two sentences — what this piece of work actually asks the student to do.
@@ -82,6 +86,20 @@ export type BriefExcerpt = {
   text: string;
 };
 
+// Roughly the share of Chinese characters a brief written in Chinese has,
+// even one dense with English course terminology. Well under what a genuine
+// mixed-language brief scores, and far above an English one.
+const MIN_CJK_RATIO = 0.12;
+
+function cjkRatio(brief: AssignmentBrief) {
+  const text = [
+    brief.summary,
+    ...brief.sections.flatMap((s) => [s.heading, ...s.bullets.map((b) => b.text)]),
+  ].join(" ");
+  if (!text) return 1;
+  return (text.match(/[一-鿿]/g)?.length ?? 0) / text.length;
+}
+
 export async function generateAssignmentBrief(
   settings: AiSettings,
   item: { title: string; kind: string; dueLabel: string },
@@ -98,10 +116,34 @@ export async function generateAssignmentBrief(
     )
     .join("\n\n")}`;
 
-  const parsed = briefSchema.parse(
-    await chatJSON({ ...settings, model: pickModel(settings, "content", user) }, SYSTEM_PROMPT, user)
-  );
+  const model = pickModel(settings, "content", user);
+  const run = async (system: string) =>
+    resolve(briefSchema.parse(await chatJSON({ ...settings, model }, system, user)), excerpts);
 
+  let brief = await run(SYSTEM_PROMPT);
+
+  // Asking once is not enough: the sources are in English and the model drifts
+  // into answering in kind. Checked rather than trusted, and retried once with
+  // the miss named — an English brief is still better than none, so a second
+  // failure is kept.
+  if (cjkRatio(brief) < MIN_CJK_RATIO) {
+    try {
+      const retry = await run(
+        `${SYSTEM_PROMPT}\n\nYour previous attempt at this was written in English. Write it again in Chinese. Only course terminology, proper nouns and short quoted requirements stay in English.`
+      );
+      if (cjkRatio(retry) > cjkRatio(brief)) brief = retry;
+    } catch (err) {
+      console.error("[brief] 中文重写失败，保留原文:", err);
+    }
+  }
+
+  return brief;
+}
+
+function resolve(
+  parsed: z.infer<typeof briefSchema>,
+  excerpts: BriefExcerpt[]
+): AssignmentBrief {
   return {
     version: 1,
     summary: parsed.summary,
