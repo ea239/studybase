@@ -42,21 +42,205 @@ const extractionSchema = z.object({
 
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
-// Phase 1 limitation: pages are concatenated and sent in one request, capped
-// at MAX_CHARS. Long materials get truncated rather than chunked — chunking
-// with cross-chunk merging is a phase 2 concern once this path is proven.
-const MAX_CHARS = 60_000;
+// How much source text goes into one extraction request. A whole 44-page
+// question bank in a single call (~49k chars) simply times out on the small,
+// cheap models this runs on, so anything larger is split. Kept well under what
+// the model can nominally accept: the limit that matters is the one where it
+// still answers reliably and in time, not the context window.
+const CHUNK_CHARS = 18_000;
 
-function buildPrompt(pages: ExtractedPage[]) {
-  let used = 0;
-  const parts: string[] = [];
-  for (const page of pages) {
-    const chunk = `\n--- Page ${page.pageNumber} ---\n${page.text}`;
-    if (used + chunk.length > MAX_CHARS) break;
-    parts.push(chunk);
-    used += chunk.length;
+function pageBlock(page: ExtractedPage) {
+  return `\n--- Page ${page.pageNumber} ---\n${page.text}`;
+}
+
+function joinPages(pages: ExtractedPage[]) {
+  return pages.map(pageBlock).join("");
+}
+
+const outlineSchema = z.object({
+  sections: z
+    .array(
+      z.object({
+        title: z.string(),
+        startPage: z.number().int(),
+      })
+    )
+    .nullable()
+    .optional()
+    .transform((v) => v ?? []),
+});
+
+const OUTLINE_SYSTEM_PROMPT = `You are given the opening lines of every page of a document, in order. Identify the sections the document is divided into — lecture sections, topic headings, numbered units, question-bank sections, and so on — using the titles exactly as they appear in the text.
+
+Report each section once, with the page it starts on. Do not invent sections that are not indicated by the text, and do not split a section just because it spans several pages. If the document has no visible section structure at all, return an empty array.
+
+Return JSON matching this shape exactly:
+{ "sections": [{ "title": string, "startPage": number }] }`;
+
+/**
+ * Asks for the document's section titles and where each starts.
+ *
+ * Only the opening lines of each page are sent, which keeps this cheap even
+ * for a long document, and is enough to spot headings. Returns an empty
+ * outline on any failure — chunking then falls back to splitting purely on
+ * size, which is worse but still works.
+ */
+async function deriveOutline(settings: AiSettings, pages: ExtractedPage[]) {
+  const digest = pages
+    .map((p) => `Page ${p.pageNumber}: ${p.text.trim().slice(0, 250).replace(/\s+/g, " ")}`)
+    .join("\n");
+  try {
+    const raw = await chatJSON(settings, OUTLINE_SYSTEM_PROMPT, digest);
+    return outlineSchema.parse(raw).sections;
+  } catch (err) {
+    console.error("[extract] 大纲识别失败，改为按长度切分:", err);
+    return [];
   }
-  return parts.join("");
+}
+
+type Chunk = { sectionTitles: string[]; pages: ExtractedPage[] };
+
+/**
+ * Groups pages into requests along section boundaries, so a chunk is a
+ * coherent unit rather than an arbitrary page cut. A section too large to fit
+ * is split across several chunks; small ones are packed together.
+ */
+function planChunks(pages: ExtractedPage[], outline: { title: string; startPage: number }[]): Chunk[] {
+  const valid = new Set(pages.map((p) => p.pageNumber));
+  const marks = outline
+    .filter((s) => valid.has(s.startPage) && s.title.trim())
+    .sort((a, b) => a.startPage - b.startPage);
+
+  // Pages grouped under the section they belong to. Anything before the first
+  // heading (title page, table of contents) forms an untitled leading group.
+  const groups: { title: string; pages: ExtractedPage[] }[] = [];
+  if (marks.length === 0) {
+    groups.push({ title: "", pages });
+  } else {
+    const lead = pages.filter((p) => p.pageNumber < marks[0].startPage);
+    if (lead.length) groups.push({ title: "", pages: lead });
+    marks.forEach((mark, i) => {
+      const end = i + 1 < marks.length ? marks[i + 1].startPage : Infinity;
+      const owned = pages.filter((p) => p.pageNumber >= mark.startPage && p.pageNumber < end);
+      if (owned.length) groups.push({ title: mark.title.trim(), pages: owned });
+    });
+  }
+
+  const chunks: Chunk[] = [];
+  let current: Chunk = { sectionTitles: [], pages: [] };
+  let currentChars = 0;
+  const flush = () => {
+    if (current.pages.length) chunks.push(current);
+    current = { sectionTitles: [], pages: [] };
+    currentChars = 0;
+  };
+
+  for (const group of groups) {
+    const groupChars = group.pages.reduce((sum, p) => sum + pageBlock(p).length, 0);
+
+    if (groupChars > CHUNK_CHARS) {
+      // Too big on its own: break it up, every part keeping the section title
+      // so the model still knows what it is reading.
+      flush();
+      let part: ExtractedPage[] = [];
+      let partChars = 0;
+      for (const page of group.pages) {
+        const len = pageBlock(page).length;
+        if (part.length && partChars + len > CHUNK_CHARS) {
+          chunks.push({ sectionTitles: group.title ? [group.title] : [], pages: part });
+          part = [];
+          partChars = 0;
+        }
+        part.push(page);
+        partChars += len;
+      }
+      if (part.length) chunks.push({ sectionTitles: group.title ? [group.title] : [], pages: part });
+      continue;
+    }
+
+    if (current.pages.length && currentChars + groupChars > CHUNK_CHARS) flush();
+    if (group.title) current.sectionTitles.push(group.title);
+    current.pages.push(...group.pages);
+    currentChars += groupChars;
+  }
+  flush();
+
+  return chunks;
+}
+
+/**
+ * One chunk's user message. Every chunk carries the whole document's section
+ * titles — titles only, not their text — so the model can place what it is
+ * reading within the document instead of treating the fragment as the whole.
+ */
+function buildChunkPrompt(chunk: Chunk, allTitles: string[], index: number, total: number) {
+  const parts: string[] = [];
+
+  if (allTitles.length) {
+    parts.push(
+      `For context, the full document is organised into these sections (titles only — the text of most of them is NOT shown below):\n` +
+        allTitles.map((t, i) => `${i + 1}. ${t}`).join("\n")
+    );
+  }
+
+  const covering = chunk.sectionTitles.length ? `, covering: ${chunk.sectionTitles.join("; ")}` : "";
+  parts.push(
+    `This is part ${index + 1} of ${total} of the document${covering}. ` +
+      `Extract ONLY from the pages given below. Do not produce anything for the other sections listed above — they are shown purely so you know where this part sits.`
+  );
+
+  parts.push(joinPages(chunk.pages));
+  return parts.join("\n\n");
+}
+
+const SUMMARY_SYSTEM_PROMPT = `You are given the per-part summaries of one document, in order. Write a single summary of the whole document in 2-4 sentences, in the same language as the input. Return JSON matching this shape exactly: { "summary": string }`;
+
+/** Folds the per-chunk summaries into one. Falls back to joining them. */
+async function mergeSummaries(settings: AiSettings, summaries: string[]) {
+  const joined = summaries.filter(Boolean).join(" ");
+  if (summaries.length <= 1) return joined;
+  try {
+    const raw = await chatJSON(settings, SUMMARY_SYSTEM_PROMPT, joined);
+    const parsed = z.object({ summary: z.string() }).parse(raw);
+    return parsed.summary;
+  } catch (err) {
+    console.error("[extract] 汇总摘要失败，改为拼接各部分摘要:", err);
+    return joined;
+  }
+}
+
+const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Concatenates the chunks' results, dropping repeats.
+ *
+ * Sections overlap at their edges and a heading often restates a definition,
+ * so the same item can come back from two chunks. Matching on title *and* the
+ * start of the content keeps genuinely distinct items that happen to share a
+ * title, which matters for things like "Example 1" appearing in each section.
+ */
+function mergeResults(results: ExtractionResult[]): Omit<ExtractionResult, "summary"> {
+  const knowledgePoints: ExtractionResult["knowledgePoints"] = [];
+  const questions: ExtractionResult["questions"] = [];
+  const seenPoints = new Set<string>();
+  const seenQuestions = new Set<string>();
+
+  for (const result of results) {
+    for (const point of result.knowledgePoints) {
+      const key = `${normalise(point.title)}|${normalise(point.content).slice(0, 80)}`;
+      if (seenPoints.has(key)) continue;
+      seenPoints.add(key);
+      knowledgePoints.push(point);
+    }
+    for (const question of result.questions) {
+      const key = normalise(question.stem);
+      if (seenQuestions.has(key)) continue;
+      seenQuestions.add(key);
+      questions.push(question);
+    }
+  }
+
+  return { knowledgePoints, questions };
 }
 
 const NOTES_SYSTEM_PROMPT = `You are an assistant that turns study material (lecture slides, textbook excerpts, notes) into structured study content.
@@ -127,7 +311,41 @@ export async function extractStructuredContent(
   pages: ExtractedPage[],
   category: keyof typeof SYSTEM_PROMPTS = "NOTES"
 ): Promise<ExtractionResult> {
-  const user = buildPrompt(pages);
-  const raw = await chatJSON(settings, SYSTEM_PROMPTS[category], user);
-  return extractionSchema.parse(raw);
+  const system = SYSTEM_PROMPTS[category];
+  const total = pages.reduce((sum, p) => sum + pageBlock(p).length, 0);
+
+  // Most course files are a single lecture and fit comfortably. Keep them on
+  // the original one-request path: no outline call, no merging, nothing new to
+  // go wrong for the common case.
+  if (total <= CHUNK_CHARS) {
+    return extractionSchema.parse(await chatJSON(settings, system, joinPages(pages)));
+  }
+
+  const outline = await deriveOutline(settings, pages);
+  const chunks = planChunks(pages, outline);
+  const allTitles = outline.map((s) => s.title.trim()).filter(Boolean);
+
+  const results: ExtractionResult[] = [];
+  const summaries: string[] = [];
+  for (const [index, chunk] of chunks.entries()) {
+    const user = buildChunkPrompt(chunk, allTitles, index, chunks.length);
+    // One failed part should cost that part, not the document: a 44-page bank
+    // is worth far more partially extracted than not at all.
+    try {
+      const parsed = extractionSchema.parse(await chatJSON(settings, system, user));
+      results.push(parsed);
+      if (parsed.summary) summaries.push(parsed.summary);
+    } catch (err) {
+      console.error(`[extract] 第 ${index + 1}/${chunks.length} 部分解析失败:`, err);
+    }
+  }
+
+  if (results.length === 0) {
+    throw new Error(`文档分为 ${chunks.length} 部分解析，但全部失败`);
+  }
+
+  return {
+    ...mergeResults(results),
+    summary: await mergeSummaries(settings, summaries),
+  };
 }
