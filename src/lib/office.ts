@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { mkdir, readFile, stat } from "fs/promises";
+import os from "os";
 import path from "path";
 import { absoluteUploadPath } from "./storage";
 
@@ -50,8 +51,10 @@ export async function officeToPdf(materialId: string, storagePath: string): Prom
         "--headless",
         "--norestore",
         // Its own profile per call: concurrent or interrupted runs otherwise
-        // fight over the default one and hang waiting for a lock.
-        `-env:UserInstallation=file://${path.join(outDir, ".lo-profile")}`,
+        // fight over the default one and hang waiting for a lock. It lives in
+        // the temp directory rather than beside the output — it is scratch
+        // space, and the uploads tree is user data.
+        `-env:UserInstallation=file://${path.join(os.tmpdir(), `lo-${materialId}`)}`,
         "--convert-to",
         "pdf",
         "--outdir",

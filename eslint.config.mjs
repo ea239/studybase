@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Uploaded files and everything derived from them. It sits under src/ only
+    // because that is where the phase-1 storage root is; none of it is source,
+    // and some of it is written by the container as root.
+    "src/data/**",
   ]),
 ]);
 
