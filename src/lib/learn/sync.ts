@@ -34,7 +34,17 @@ export type SyncReport = {
   updated: number;
   /** Files already uploaded by hand that this run claimed instead of re-downloading. */
   adopted: number;
+  /** Already held and unchanged since LEARN last touched them. */
   skipped: number;
+  /**
+   * Files LEARN has that the parser cannot read, by name.
+   *
+   * Counted apart from `skipped` because the two mean opposite things: one is
+   * "nothing to do", the other is course material silently missing from the
+   * app. A course outline posted as .ppt is how ECE 358 ended up with no dates
+   * at all, and a single "skipped" tally gave no way to notice.
+   */
+  unsupported: string[];
   error?: string;
 };
 
@@ -58,14 +68,21 @@ async function syncCourse(course: {
   name: string;
   subjectId: string | null;
 }): Promise<SyncReport> {
-  const report: SyncReport = { course: course.name, imported: 0, updated: 0, adopted: 0, skipped: 0 };
+  const report: SyncReport = {
+    course: course.name,
+    imported: 0,
+    updated: 0,
+    adopted: 0,
+    skipped: 0,
+    unsupported: [],
+  };
   const topics = await listTopics(course.orgUnitId);
 
   for (const topic of topics) {
     const filename = filenameOf(topic);
     const fileType = fileTypeOf(filename);
     if (!fileType) {
-      report.skipped++;
+      report.unsupported.push(filename);
       continue;
     }
 
@@ -160,12 +177,24 @@ export async function syncEnabledCourses(): Promise<SyncReport[]> {
         where: { id: course.id },
         data: {
           lastSyncedAt: new Date(),
-          lastResult: `新增 ${report.imported} · 更新 ${report.updated} · 认领 ${report.adopted} · 跳过 ${report.skipped}`,
+          lastResult:
+            `新增 ${report.imported} · 更新 ${report.updated} · 认领 ${report.adopted} · 未变 ${report.skipped}` +
+            (report.unsupported.length
+              ? ` · 格式不支持 ${report.unsupported.length}：${report.unsupported.join("、")}`
+              : ""),
         },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      reports.push({ course: course.name, imported: 0, updated: 0, adopted: 0, skipped: 0, error: message });
+      reports.push({
+        course: course.name,
+        imported: 0,
+        updated: 0,
+        adopted: 0,
+        skipped: 0,
+        unsupported: [],
+        error: message,
+      });
       await prisma.learnCourse.update({
         where: { id: course.id },
         data: { lastSyncedAt: new Date(), lastResult: `失败：${message}` },

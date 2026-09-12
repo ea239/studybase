@@ -15,6 +15,7 @@ type Course = {
 type Subject = { id: string; name: string };
 export type LearnState = {
   connected: boolean;
+  stale?: boolean;
   expiresAt: string | null;
   courses: Course[];
   subjects: Subject[];
@@ -51,6 +52,7 @@ export function LearnSync({ initial }: { initial: LearnState }) {
         imported: number;
         updated: number;
         adopted: number;
+        unsupported?: string[];
         error?: string;
       }[] = data.reports ?? [];
       setMessage(
@@ -60,7 +62,8 @@ export function LearnSync({ initial }: { initial: LearnState }) {
               .map((r) =>
                 r.error
                   ? `${r.course}：${r.error}`
-                  : `${r.course}：新增 ${r.imported}，更新 ${r.updated}，认领 ${r.adopted}`
+                  : `${r.course}：新增 ${r.imported}，更新 ${r.updated}，认领 ${r.adopted}` +
+                    (r.unsupported?.length ? `，格式不支持 ${r.unsupported.length}` : "")
               )
               .join("；")
       );

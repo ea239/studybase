@@ -47,6 +47,26 @@ async function request(session: LearnSession, url: string, accept = "application
   return res;
 }
 
+/**
+ * Checks the saved session against LEARN itself.
+ *
+ * Cookie expiry timestamps only say when the browser would stop sending them;
+ * LEARN invalidates sessions on its own schedule long before that, and until
+ * something tried to sync, the settings page happily reported a dead session
+ * as connected.
+ */
+export async function verifyLearnSession(): Promise<boolean> {
+  const session = await readLearnSession();
+  if (!session) return false;
+  const { lp } = await apiVersions();
+  try {
+    await request(session, `${LEARN_ORIGIN}/d2l/api/lp/${lp}/users/whoami`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type LearnCourseInfo = { orgUnitId: string; name: string; code: string | null };
 
 /** Course offerings the logged-in user is enrolled in. */

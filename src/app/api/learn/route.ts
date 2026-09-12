@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { readLearnSession } from "@/lib/learn/session";
-import { LearnAuthError } from "@/lib/learn/client";
+import { LearnAuthError, verifyLearnSession } from "@/lib/learn/client";
 import { refreshCourses, syncEnabledCourses } from "@/lib/learn/sync";
 
 // Owner-only; the middleware enforces that before any of this runs.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [session, courses, subjects] = await Promise.all([
+  const [session, live, courses, subjects] = await Promise.all([
     readLearnSession(),
+    // Asked of LEARN, not inferred from the cookie's own expiry.
+    verifyLearnSession().catch(() => false),
     prisma.learnCourse.findMany({ orderBy: [{ enabled: "desc" }, { name: "asc" }] }),
     prisma.subject.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   return NextResponse.json({
-    connected: Boolean(session),
+    connected: live,
+    /** Cookies are present but LEARN no longer accepts them. */
+    stale: Boolean(session) && !live,
     expiresAt: session?.expiresAt ?? null,
     courses,
     subjects,
