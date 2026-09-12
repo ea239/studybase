@@ -75,9 +75,11 @@ function Chip({
 export function Practice({ questions }: { questions: PracticeQuestion[] }) {
   const [chapter, setChapter] = useState<string>(ALL);
   const [difficulty, setDifficulty] = useState<string>(ALL);
-  const [index, setIndex] = useState(0);
-  // Per-question: the option index picked, or "revealed" for a written answer.
-  const [picked, setPicked] = useState<Record<string, number | "revealed">>({});
+  // Answers are hidden by default but revealed per question, plus a switch for
+  // the whole list — reading through with everything open is a normal way to
+  // revise, and so is covering them up to self-test.
+  const [shownAll, setShownAll] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
 
   const chapters = useMemo(() => {
     const seen = new Map<string, string>();
@@ -95,22 +97,24 @@ export function Practice({ questions }: { questions: PracticeQuestion[] }) {
     [questions, chapter, difficulty]
   );
 
-  // Filters change which questions exist, so an index from the old set would
-  // point somewhere arbitrary in the new one.
-  const safeIndex = Math.min(index, Math.max(filtered.length - 1, 0));
-  const current = filtered[safeIndex];
-
-  const answered = filtered.filter((q) => picked[q.id] !== undefined).length;
-  const correct = filtered.filter((q) => {
-    const pick = picked[q.id];
-    return typeof pick === "number" && q.options && isCorrectOption(q.answer, q.options[pick], pick);
-  }).length;
-
-  const move = (delta: number) => setIndex(Math.min(Math.max(safeIndex + delta, 0), filtered.length - 1));
-  const choose = (value: number | "revealed") => {
-    if (current && picked[current.id] === undefined) {
-      setPicked((prev) => ({ ...prev, [current.id]: value }));
+  // Grouped under their chapter, so a long list still reads as the course.
+  const groups = useMemo(() => {
+    const map = new Map<string, { name: string; items: PracticeQuestion[] }>();
+    for (const q of filtered) {
+      const key = q.chapterId ?? "";
+      if (!map.has(key)) map.set(key, { name: q.chapterName, items: [] });
+      map.get(key)!.items.push(q);
     }
+    return [...map.values()];
+  }, [filtered]);
+
+  const isOpen = (id: string) => open[id] ?? shownAll;
+  const toggleAll = () => {
+    const next = !shownAll;
+    setShownAll(next);
+    // Clear the per-question overrides, or the switch appears not to work on
+    // whichever ones were toggled by hand.
+    setOpen({});
   };
 
   if (questions.length === 0) {
@@ -121,160 +125,133 @@ export function Practice({ questions }: { questions: PracticeQuestion[] }) {
     );
   }
 
-  const pick = current ? picked[current.id] : undefined;
-  const revealed = pick !== undefined;
-
   return (
     <div className="flex flex-col gap-5">
-      {/* Labelled, because the sidebar already lists the chapters: these
-          narrow the question set rather than navigating anywhere. */}
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium tracking-wide text-neutral-400 uppercase">筛选</p>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Chip active={chapter === ALL} onClick={() => { setChapter(ALL); setIndex(0); }}>
+          <Chip active={chapter === ALL} onClick={() => setChapter(ALL)}>
             全部章节
           </Chip>
           {chapters.map((c) => (
-            <Chip
-              key={c.id || "none"}
-              active={chapter === c.id}
-              onClick={() => { setChapter(c.id); setIndex(0); }}
-            >
+            <Chip key={c.id || "none"} active={chapter === c.id} onClick={() => setChapter(c.id)}>
               {c.name}
             </Chip>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip active={difficulty === ALL} onClick={() => { setDifficulty(ALL); setIndex(0); }}>
-            全部难度
-          </Chip>
-          {DIFFICULTIES.map((d) => (
-            <Chip
-              key={d}
-              active={difficulty === d}
-              onClick={() => { setDifficulty(d); setIndex(0); }}
-            >
-              {DIFFICULTY_LABELS[d] ?? d}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip active={difficulty === ALL} onClick={() => setDifficulty(ALL)}>
+              全部难度
             </Chip>
-          ))}
+            {DIFFICULTIES.map((d) => (
+              <Chip key={d} active={difficulty === d} onClick={() => setDifficulty(d)}>
+                {DIFFICULTY_LABELS[d] ?? d}
+              </Chip>
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-neutral-400">{filtered.length} 题</span>
+            <button
+              onClick={toggleAll}
+              className="rounded-lg bg-neutral-900/[0.05] px-3 py-1 text-xs transition-colors hover:bg-neutral-900/[0.1]"
+            >
+              {shownAll ? "隐藏全部答案" : "显示全部答案"}
+            </button>
+          </div>
         </div>
       </div>
 
-      {filtered.length === 0 || !current ? (
+      {filtered.length === 0 ? (
         <p className="text-sm text-neutral-500">这个筛选条件下没有题目。</p>
       ) : (
-        <>
-          <div className="flex items-center gap-3">
-            <div className="h-1 flex-1 overflow-hidden rounded-full bg-neutral-900/[0.07]">
-              <div
-                className="h-full rounded-full bg-neutral-900 transition-[width] duration-300"
-                style={{ width: `${((safeIndex + 1) / filtered.length) * 100}%` }}
-              />
-            </div>
-            <span className="shrink-0 text-xs text-neutral-400">
-              {safeIndex + 1} / {filtered.length}
-              {answered > 0 && ` · 已答 ${answered}`}
-              {correct > 0 && ` · 对 ${correct}`}
-            </span>
-          </div>
+        <div className="flex flex-col gap-6">
+          {groups.map((group, gi) => (
+            <section key={gi} className="flex flex-col gap-2.5">
+              {chapter === ALL && (
+                <h2 className="text-xs font-medium tracking-wide text-neutral-400 uppercase">
+                  {group.name} · {group.items.length} 题
+                </h2>
+              )}
+              {group.items.map((q, qi) => {
+                const revealed = isOpen(q.id);
+                return (
+                  <div key={q.id} className="surface flex flex-col gap-3 rounded-2xl p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 shrink-0 font-mono text-xs text-neutral-400">
+                        {qi + 1}
+                      </span>
+                      <div className="min-w-0 flex-1 text-[15px] leading-relaxed text-neutral-900">
+                        <Markdown>{q.stem}</Markdown>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-neutral-900/[0.05] px-2 py-0.5 text-xs text-neutral-500">
+                        {DIFFICULTY_LABELS[q.difficulty] ?? q.difficulty}
+                      </span>
+                    </div>
 
-          {/* Remounted per question so a previous answer's state never bleeds
-              into the next one. */}
-          <div key={current.id} className="surface animate-fade-up flex flex-col gap-4 rounded-2xl p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 text-[15px] leading-relaxed text-neutral-900">
-                <Markdown>{current.stem}</Markdown>
-              </div>
-              <span className="shrink-0 rounded-full bg-neutral-900/[0.05] px-2 py-0.5 text-xs text-neutral-500">
-                {DIFFICULTY_LABELS[current.difficulty] ?? current.difficulty}
-              </span>
-            </div>
+                    {q.options && (
+                      <ul className="flex flex-col gap-1.5 pl-7">
+                        {q.options.map((option, i) => {
+                          const correct = revealed && isCorrectOption(q.answer, option, i);
+                          return (
+                            <li
+                              key={i}
+                              className={`flex items-start gap-2.5 rounded-lg px-2 py-1 text-sm ${
+                                correct ? "bg-green-500/[0.09] text-neutral-900" : "text-neutral-700"
+                              }`}
+                            >
+                              <span className="mt-px shrink-0 font-mono text-xs text-neutral-400">
+                                {optionLetter(i)}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <Markdown inline>{option}</Markdown>
+                              </span>
+                              {correct && <span className="shrink-0 text-green-600">✓</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
 
-            {current.options ? (
-              <ul className="flex flex-col gap-2">
-                {current.options.map((option, i) => {
-                  const isAnswer = isCorrectOption(current.answer, option, i);
-                  const isPicked = pick === i;
-                  // Before answering every option looks neutral; afterwards the
-                  // right one is always marked, whether or not it was chosen.
-                  const tone = !revealed
-                    ? "border-neutral-900/10 hover:border-neutral-900/25 hover:bg-neutral-900/[0.03]"
-                    : isAnswer
-                      ? "border-green-500/40 bg-green-500/[0.07]"
-                      : isPicked
-                        ? "border-red-500/40 bg-red-500/[0.06]"
-                        : "border-neutral-900/10 opacity-60";
-                  return (
-                    <li key={i}>
-                      <button
-                        disabled={revealed}
-                        onClick={() => choose(i)}
-                        className={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${tone}`}
+                    {revealed && (
+                      <div className="flex flex-col gap-2.5 border-t border-neutral-900/[0.07] pt-3 pl-7">
+                        <div className="text-sm">
+                          <p className="mb-1 text-xs font-medium tracking-wide text-neutral-400 uppercase">
+                            答案
+                          </p>
+                          <Markdown>{q.answer}</Markdown>
+                        </div>
+                        {q.explanation && (
+                          <div className="text-sm text-neutral-700">
+                            <p className="mb-1 text-xs font-medium tracking-wide text-neutral-400 uppercase">
+                              解析
+                            </p>
+                            <Markdown>{q.explanation}</Markdown>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 pl-7">
+                      <Link
+                        href={`/materials/${q.materialId}`}
+                        className="min-w-0 truncate text-xs text-neutral-400 transition-colors hover:text-blue-600"
                       >
-                        <span className="mt-px shrink-0 font-mono text-xs text-neutral-400">
-                          {optionLetter(i)}
-                        </span>
-                        <span className="min-w-0 flex-1 text-neutral-800">{option}</span>
-                        {revealed && isAnswer && <span className="shrink-0 text-green-600">✓</span>}
-                        {revealed && isPicked && !isAnswer && <span className="shrink-0 text-red-500">✕</span>}
+                        来自 {q.materialName}
+                        {q.sourcePage != null ? ` 第 ${q.sourcePage} 页` : ""} →
+                      </Link>
+                      <button
+                        onClick={() => setOpen((prev) => ({ ...prev, [q.id]: !revealed }))}
+                        className="shrink-0 rounded-lg px-2 py-1 text-xs text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900"
+                      >
+                        {revealed ? "隐藏答案" : "显示答案"}
                       </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              !revealed && (
-                <button
-                  onClick={() => choose("revealed")}
-                  className="w-fit rounded-lg bg-neutral-900 px-3 py-1.5 text-xs text-white transition-opacity hover:opacity-85"
-                >
-                  显示答案
-                </button>
-              )
-            )}
-
-            {revealed && (
-              <div className="flex flex-col gap-3 border-t border-neutral-900/[0.07] pt-3">
-                <div className="text-sm">
-                  <p className="mb-1 text-xs font-medium tracking-wide text-neutral-400 uppercase">答案</p>
-                  <Markdown>{current.answer}</Markdown>
-                </div>
-                {current.explanation && (
-                  <div className="text-sm text-neutral-700">
-                    <p className="mb-1 text-xs font-medium tracking-wide text-neutral-400 uppercase">解析</p>
-                    <Markdown>{current.explanation}</Markdown>
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-2 border-t border-neutral-900/[0.07] pt-3">
-              <Link
-                href={`/materials/${current.materialId}`}
-                className="min-w-0 truncate text-xs text-neutral-400 transition-colors hover:text-blue-600"
-              >
-                来自 {current.materialName}
-                {current.sourcePage != null ? ` 第 ${current.sourcePage} 页` : ""} →
-              </Link>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  onClick={() => move(-1)}
-                  disabled={safeIndex === 0}
-                  className="rounded-lg bg-neutral-900/[0.05] px-3 py-1.5 text-xs transition-colors hover:bg-neutral-900/[0.1] disabled:opacity-35"
-                >
-                  上一题
-                </button>
-                <button
-                  onClick={() => move(1)}
-                  disabled={safeIndex >= filtered.length - 1}
-                  className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs text-white transition-opacity hover:opacity-85 disabled:opacity-35"
-                >
-                  下一题
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
+                );
+              })}
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );

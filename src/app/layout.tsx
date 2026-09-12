@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/", label: "科目" },
   { href: "/materials", label: "资料库" },
+  { href: "/calendar", label: "日历" },
 ];
 // Settings expose the AI credentials, the MCP token and user approvals, so the
 // entry point is owner-only — the middleware enforces it, this just hides it.

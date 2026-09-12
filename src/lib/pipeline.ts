@@ -4,8 +4,10 @@ import { extractPdfPages } from "@/lib/pdf";
 import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
 import { getAiSettings } from "@/lib/ai/settings";
+import type { AiSettings } from "@/lib/ai/types";
 import { resolveChapter } from "@/lib/chapter-resolver";
 import { generateChapterOverview } from "@/lib/ai/chapterOverview";
+import { extractCourseEvents } from "@/lib/ai/courseEvents";
 
 // Extraction below this confidence gets flagged for human review instead of
 // being silently trusted — see the "AI 分类可能出错" concern in the plan.
@@ -84,6 +86,46 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
     );
     work.then(resolve, reject).finally(() => clearTimeout(timer));
   });
+}
+
+/**
+ * Rebuilds the calendar entries this document contributes.
+ *
+ * Only the facts already tagged as schedules or deadlines are sent, so a
+ * lecture deck costs nothing here. Failure is contained: a document that
+ * parsed fine should not be marked failed because its dates could not be read,
+ * and its old events are left in place rather than dropped.
+ */
+async function refreshCourseEvents(materialId: string, subjectId: string | null, settings: AiSettings) {
+  if (!subjectId) return;
+
+  const facts = await prisma.knowledgePoint.findMany({
+    where: {
+      materialId,
+      OR: [{ tags: { contains: "deadline" } }, { tags: { contains: "schedule" } }],
+    },
+    select: { title: true, content: true, sourcePage: true },
+  });
+  if (facts.length === 0) {
+    await prisma.courseEvent.deleteMany({ where: { materialId } });
+    return;
+  }
+
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } });
+
+  try {
+    const events = await extractCourseEvents(settings, subject?.name ?? "", facts);
+    // Replaced as a unit, after the extraction succeeds, so a failure cannot
+    // empty the calendar.
+    await prisma.courseEvent.deleteMany({ where: { materialId } });
+    if (events.length) {
+      await prisma.courseEvent.createMany({
+        data: events.map((e) => ({ ...e, materialId, subjectId })),
+      });
+    }
+  } catch (err) {
+    console.error(`[events] ${materialId} 日期提取失败:`, err);
+  }
 }
 
 // Re-processing moves items to whichever chapter they resolve to now, which
@@ -300,6 +342,8 @@ export async function processMaterial(materialId: string) {
         await prisma.material.update({ where: { id: materialId }, data: { chapterId: topChapterId } });
       }
     }
+
+    await refreshCourseEvents(materialId, material.subjectId, aiSettings);
 
     const lowConfidence = [...result.knowledgePoints, ...result.questions].some(
       (item) => (item.confidence ?? 1) < REVIEW_THRESHOLD

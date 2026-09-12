@@ -41,6 +41,7 @@ model Subject {
   chapters  Chapter[]
   materials Material[]
   learnCourses LearnCourse[]
+  events    CourseEvent[]
 }
 
 model Chapter {
@@ -92,6 +93,7 @@ model Material {
   pages           MaterialPage[]
   knowledgePoints KnowledgePoint[]
   questions       Question[]
+  events          CourseEvent[]
 }
 
 // Raw extracted text per page, kept verbatim as ground truth for citations.
@@ -202,6 +204,51 @@ model ConversationMessage {
 model Setting {
   key   String @id
   value String
+}
+
+// A dated item pulled out of a course's own documents — a lab due date, an
+// assignment deadline, an exam window.
+//
+// Course documents state dates with wildly varying certainty: "September 25,
+// 11:59pm" is something to put in a calendar cell, while "October 26-30th" for
+// a midterm is a window the registrar has not fixed yet. Keeping that
+// distinction is the point of `precision`: only EXACT is placed on a day.
+model CourseEvent {
+  id        String  @id @default(cuid())
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  // The document this came from, so a re-parse can replace exactly its own
+  // events and the calendar can link back to the source.
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  sourcePage Int?
+
+  title String
+  kind  CourseEventKind @default(OTHER)
+
+  precision CourseEventPrecision @default(UNKNOWN)
+  startsAt  DateTime? // set for EXACT and RANGE
+  endsAt    DateTime? // set for RANGE only
+  /// Verbatim wording when the source gives no usable date ("期末考试周").
+  approxLabel String?
+
+  createdAt DateTime @default(now())
+
+  @@index([subjectId, startsAt])
+}
+
+enum CourseEventKind {
+  LAB
+  ASSIGNMENT
+  EXAM
+  OTHER
+}
+
+enum CourseEventPrecision {
+  EXACT // a specific day — goes on the calendar
+  RANGE // a window, e.g. an exam period
+  UNKNOWN // named but undated
 }
 
 // A course on LEARN (D2L Brightspace), mirrored locally so the owner can pick
