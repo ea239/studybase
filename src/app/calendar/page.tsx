@@ -21,6 +21,7 @@ export default async function CalendarPage() {
     subjectId: e.subject.id,
     subjectName: e.subject.name,
     materialId: e.materialId,
+    completedAt: e.completedAt?.toISOString() ?? null,
   }));
 
   return (

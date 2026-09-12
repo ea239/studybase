@@ -14,7 +14,16 @@ export type CalendarEvent = {
   subjectId: string;
   subjectName: string;
   materialId: string;
+  completedAt: string | null;
 };
+
+// Dated work opens its brief; anything else (term boundaries, reading week)
+// has nothing to brief and goes to the document it came from.
+function eventHref(e: CalendarEvent) {
+  return e.kind === "OTHER"
+    ? `/materials/${e.materialId}`
+    : `/subjects/${e.subjectId}?tab=work&item=${e.id}`;
+}
 
 const KIND_LABEL: Record<CalendarEvent["kind"], string> = {
   LAB: "实验",
@@ -100,7 +109,10 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
   const upcoming = useMemo(() => {
     const now = today.getTime();
     return shown
-      .filter((e) => e.precision === "EXACT" && e.startsAt && new Date(e.startsAt).getTime() >= now)
+      .filter(
+        (e) =>
+          !e.completedAt && e.precision === "EXACT" && e.startsAt && new Date(e.startsAt).getTime() >= now
+      )
       .sort((a, b) => a.startsAt!.localeCompare(b.startsAt!))
       .slice(0, 5);
   }, [shown, today]);
@@ -211,9 +223,11 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                   {dayEvents.map((e) => (
                     <Link
                       key={e.id}
-                      href={`/materials/${e.materialId}`}
+                      href={eventHref(e)}
                       title={`${e.subjectName} · ${e.title}`}
-                      className={`block truncate rounded-md px-1.5 py-0.5 text-[11px] leading-tight transition-opacity hover:opacity-75 ${KIND_TONE[e.kind]}`}
+                      className={`block truncate rounded-md px-1.5 py-0.5 text-[11px] leading-tight transition-opacity hover:opacity-75 ${
+                        KIND_TONE[e.kind]
+                      } ${e.completedAt ? "line-through opacity-50" : ""}`}
                     >
                       {e.title}
                     </Link>
@@ -241,7 +255,12 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                   <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] ${KIND_TONE[e.kind]}`}>
                     {KIND_LABEL[e.kind]}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-neutral-800">{e.title}</span>
+                  <Link
+                    href={eventHref(e)}
+                    className="min-w-0 flex-1 truncate text-neutral-800 transition-colors hover:text-blue-600"
+                  >
+                    {e.title}
+                  </Link>
                   <span className="shrink-0 text-xs text-neutral-400">{e.subjectName}</span>
                 </li>
               ))}

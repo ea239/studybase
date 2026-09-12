@@ -237,6 +237,16 @@ model CourseEvent {
   /// Verbatim wording when the source gives no usable date ("期末考试周").
   approxLabel String?
 
+  /// Ticked off by hand. Completed work stays listed, just out of the way.
+  completedAt DateTime?
+
+  /// AI-written brief for this piece of work: what it asks for, how it is
+  /// marked, what to hand in. Assembled from the assignment's own document
+  /// plus the guidelines and outline that qualify it, which is why it is
+  /// stored rather than re-derived on every view.
+  brief            String?
+  briefGeneratedAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([subjectId, startsAt])

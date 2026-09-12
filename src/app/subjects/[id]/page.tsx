@@ -3,20 +3,52 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { STRUCTURED_TAG_LABELS } from "@/lib/labels";
 import { Practice, type PracticeQuestion } from "./Practice";
+import { WorkList, type WorkItem } from "./WorkList";
+import { WorkDetail, type WorkDetailItem } from "./WorkDetail";
+import type { AssignmentBrief } from "@/lib/ai/assignmentBrief";
 import ChapterReader from "./ChapterReader";
 import { AskAI } from "@/components/AskAI";
 import type { ChapterOverviewContent } from "@/lib/ai/chapterOverview";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "lecture" | "exercises" | "lab" | "info";
+type Tab = "lecture" | "exercises" | "work" | "lab" | "info";
 const TABS: { key: Tab; label: string }[] = [
   { key: "lecture", label: "Lecture 大纲" },
   { key: "exercises", label: "练习题" },
+  { key: "work", label: "作业" },
   { key: "lab", label: "Lab" },
   { key: "info", label: "课程信息" },
 ];
 const OTHER_TABS = TABS.filter((t) => t.key !== "lecture");
+
+// A brief written by an older version reads as "not generated yet" rather
+// than rendering half-correctly.
+function parseBrief(raw: string | null | undefined): AssignmentBrief | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.version === 1 && Array.isArray(parsed.sections) ? (parsed as AssignmentBrief) : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatDue(e: {
+  precision: string;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  approxLabel: string | null;
+}) {
+  if (e.precision === "RANGE" && e.startsAt && e.endsAt) {
+    return `${e.startsAt.getMonth() + 1} 月 ${e.startsAt.getDate()} 日 – ${e.endsAt.getMonth() + 1} 月 ${e.endsAt.getDate()} 日`;
+  }
+  if (!e.startsAt) return e.approxLabel ?? "待公布";
+  const t = e.startsAt.getHours() || e.startsAt.getMinutes()
+    ? ` ${e.startsAt.getHours()}:${String(e.startsAt.getMinutes()).padStart(2, "0")}`
+    : "";
+  return `${e.startsAt.getMonth() + 1} 月 ${e.startsAt.getDate()} 日${t}`;
+}
 
 // Only the current note-style format renders. Anything older (the v1 prose
 // blocks) reads as "not generated yet" so it gets regenerated on demand.
@@ -36,10 +68,10 @@ export default async function SubjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; chapter?: string }>;
+  searchParams: Promise<{ tab?: string; chapter?: string; item?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam, chapter: chapterParam } = await searchParams;
+  const { tab: tabParam, chapter: chapterParam, item: itemParam } = await searchParams;
   const tab: Tab = (TABS.find((t) => t.key === tabParam)?.key ?? "lecture") as Tab;
 
   const subject = await prisma.subject.findUnique({
@@ -53,6 +85,9 @@ export default async function SubjectPage({
           questions: { orderBy: { sourcePage: "asc" } },
         },
       },
+      // Exams are listed alongside the work: they are things with a date that
+      // the student has to prepare for, which is what this view is for.
+      events: { orderBy: [{ startsAt: "asc" }] },
     },
   });
   if (!subject) notFound();
@@ -142,6 +177,39 @@ export default async function SubjectPage({
                 />
               )
             ))}
+          {tab === "work" &&
+            (() => {
+              const selected = itemParam ? subject.events.find((e) => e.id === itemParam) : null;
+              if (selected) {
+                const detail: WorkDetailItem = {
+                  id: selected.id,
+                  title: selected.title,
+                  kind: selected.kind,
+                  dueLabel: formatDue(selected),
+                  precision: selected.precision,
+                  startsAt: selected.startsAt?.toISOString() ?? null,
+                  completedAt: selected.completedAt?.toISOString() ?? null,
+                  brief: parseBrief(selected.brief),
+                  briefGeneratedAt: selected.briefGeneratedAt?.toISOString() ?? null,
+                };
+                return <WorkDetail subjectId={id} item={detail} />;
+              }
+              const items: WorkItem[] = subject.events
+                .filter((e) => e.kind !== "OTHER")
+                .map((e) => ({
+                  id: e.id,
+                  title: e.title,
+                  kind: e.kind,
+                  precision: e.precision,
+                  startsAt: e.startsAt?.toISOString() ?? null,
+                  endsAt: e.endsAt?.toISOString() ?? null,
+                  approxLabel: e.approxLabel,
+                  completedAt: e.completedAt?.toISOString() ?? null,
+                  hasBrief: Boolean(e.brief),
+                }));
+              return <WorkList subjectId={id} items={items} />;
+            })()}
+
           {tab === "exercises" && (
             <Practice questions={buildPracticeQuestions(subject.chapters, notesMaterials)} />
           )}
