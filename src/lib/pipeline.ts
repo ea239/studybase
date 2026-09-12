@@ -15,6 +15,12 @@ const REVIEW_THRESHOLD = 0.6;
 // parallel: resolveChapter's dedupe cache is per-call, so concurrent runs on
 // the same subject would each create their own "Chapter 3" row; and a batch
 // upload would otherwise fire N simultaneous AI requests.
+// Backstop for the serial queue: however a job manages to hang — a wedged
+// socket, a provider that accepts a request and never answers — the documents
+// behind it must still get their turn. Comfortably longer than the AI client's
+// own timeout, so this only fires for hangs that one fails to catch.
+const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+
 let queue: Promise<unknown> = Promise.resolve();
 let inFlight = 0;
 const chaptersNeedingNotes = new Set<string>();
@@ -24,7 +30,7 @@ export function enqueueProcessMaterial(materialId: string) {
 
   const run = async () => {
     try {
-      await processMaterial(materialId);
+      await withTimeout(processMaterial(materialId), JOB_TIMEOUT_MS);
     } catch (err) {
       // processMaterial records its own failures on the row. This catches the
       // ones it cannot — a write that fails while it is writing the failure —
@@ -61,6 +67,19 @@ export function enqueueProcessMaterial(materialId: string) {
   // its way out, permanently.
   queue = queue.then(run, run);
   return queue;
+}
+
+// Rejects once the deadline passes. The underlying work is not cancelled — it
+// cannot be — but it stops holding up the queue, and whatever it writes when
+// it eventually finishes is still correct.
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`处理超时（超过 ${Math.round(ms / 60000)} 分钟），已跳过`)),
+      ms
+    );
+    work.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 // Chapter notes are written automatically after new material lands, so the

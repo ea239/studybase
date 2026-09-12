@@ -3,6 +3,13 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { OPENCODE_GO_BASE_URL, type AiSettings } from "./types";
 
+// Batch work runs on a serial queue, so a request that hangs stalls every
+// document behind it. Both SDKs default to a 10-minute timeout with 2 retries
+// — up to half an hour on one stuck call — which is far too long to wait
+// before giving up and moving on.
+const BATCH_TIMEOUT_MS = 3 * 60 * 1000;
+const BATCH_RETRIES = 1;
+
 // Sends a single-turn chat request and returns the parsed JSON response.
 // Supports OpenAI, Anthropic, and any OpenAI-compatible custom endpoint —
 // this is the one place provider differences are handled, so extraction
@@ -16,7 +23,11 @@ export async function chatJSON(
     "Respond with ONLY a single valid JSON object. No markdown code fences, no commentary before or after.";
 
   if (settings.provider === "anthropic") {
-    const client = new Anthropic({ apiKey: settings.apiKey });
+    const client = new Anthropic({
+      apiKey: settings.apiKey,
+      timeout: BATCH_TIMEOUT_MS,
+      maxRetries: BATCH_RETRIES,
+    });
     const resp = await client.messages.create({
       model: settings.model,
       max_tokens: 8192,
@@ -30,7 +41,10 @@ export async function chatJSON(
     return parseJsonLoose(text);
   }
 
-  const client = openAiClient(settings);
+  const client = openAiClient(settings, undefined, {
+    timeout: BATCH_TIMEOUT_MS,
+    maxRetries: BATCH_RETRIES,
+  });
 
   try {
     const resp = await client.chat.completions.create({
@@ -56,7 +70,11 @@ export async function chatJSON(
   }
 }
 
-function openAiClient(settings: AiSettings, sessionId?: string) {
+function openAiClient(
+  settings: AiSettings,
+  sessionId?: string,
+  limits?: { timeout: number; maxRetries: number }
+) {
   const baseURL =
     settings.provider === "opencode"
       ? OPENCODE_GO_BASE_URL
@@ -72,7 +90,7 @@ function openAiClient(settings: AiSettings, sessionId?: string) {
     settings.provider === "opencode"
       ? { "x-opencode-session": sessionId ?? randomUUID(), "User-Agent": "studybase/0.1.0" }
       : undefined;
-  return new OpenAI({ apiKey: settings.apiKey, baseURL, defaultHeaders });
+  return new OpenAI({ apiKey: settings.apiKey, baseURL, defaultHeaders, ...limits });
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
