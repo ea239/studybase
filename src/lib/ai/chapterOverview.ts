@@ -75,6 +75,12 @@ Write NOTES, not an essay. Rules:
 - Do not invent content that is not in the source knowledge points.
 - Write in English.
 
+Write every formula, equation, and mathematical symbol as LaTeX — the app typesets it. Never write maths as plain text or Unicode symbols: no Σ, ∫, μ, σ, ², √, ≤, ∞, α, →, or similar characters outside LaTeX.
+- Inline, within a line: single dollars, e.g. $E[X+Y] = E[X] + E[Y]$, $\\sigma = \\sqrt{\\operatorname{Var}(X)}$, $O(n \\log n)$.
+- A formula that is the whole point of its bullet: double dollars on its own, e.g. $$\\operatorname{Var}(X) = E[X^2] - (E[X])^2$$ — put a few words before it, then the display formula.
+- Use double dollars sparingly: one or two per section, for the formulas worth remembering. Everything else stays inline.
+- Variables and symbols mentioned in prose are maths too: write $X$, $\\mu$, $p(x)$, not X, mu, p(x).
+
 Every bullet MUST be an object with a "text" string and a "sources" array listing the 1-based number(s) of the input knowledge point(s) it came from. Never write a bullet as a bare string — without "sources" the note loses its link back to the source page.
 
 Each bullet also needs a "figure" boolean. The app can show the original slide next to a bullet, so set "figure": true ONLY where seeing the slide genuinely adds something words can't:
@@ -92,6 +98,8 @@ You will receive a JSON array of English lines (section headings and bullets fro
 A Chinese speaker must be able to read your translation and understand the point without knowing English. Translate into Chinese: all verbs, adjectives, connectives, common nouns, descriptions, and any list of ordinary concepts.
 
 Keep in English ONLY, exactly as written in the source: named technical terms the course uses as terminology (e.g. schema, DBMS, B+ tree, physical schema, TCP), proper nouns and product names (MySQL, Ubuntu), and commands/code/identifiers.
+
+Reproduce every LaTeX formula character for character, dollar signs included — $E[X^2]$ and $$\\operatorname{Var}(X) = E[X^2] - (E[X])^2$$ must come back byte-identical. Translate the words around a formula, never anything between the dollars, and never convert LaTeX into Unicode symbols or plain text.
 
 Never leave a whole clause or a comma-separated list of plain descriptions untranslated. Examples:
 - BAD:  "File systems 缺点：data redundancy, inconsistency, no integrity enforcement"
@@ -119,18 +127,34 @@ async function writeEnglishNotes(
 // typically a much cheaper model than the one that wrote the notes.
 async function translateLines(settings: AiSettings, lines: string[]): Promise<string[]> {
   if (lines.length === 0) return [];
-  const translateSettings: AiSettings = { ...settings, model: settings.translateModel || settings.model };
-  try {
-    const raw = await chatJSON(translateSettings, TRANSLATE_PROMPT, JSON.stringify(lines, null, 2));
+
+  const attempt = async (model: string) => {
+    const raw = await chatJSON({ ...settings, model }, TRANSLATE_PROMPT, JSON.stringify(lines, null, 2));
     const parsed = translationSchema.parse(raw);
     // A short/long response would silently misalign headings and bullets, so
     // fall back to the English text for anything the model didn't return.
     return lines.map((line, i) => parsed.lines[i] ?? line);
+  };
+
+  const cheap = settings.translateModel?.trim();
+  try {
+    return await attempt(cheap || settings.model);
   } catch (err) {
+    console.error("[chapter-notes] 翻译失败:", err);
+    // One transient failure on the cheap model used to leave a chapter in
+    // English permanently — nothing retried it, and nothing said so. Fall back
+    // to the model that wrote the notes, which is the one already known to be
+    // working at this point.
+    if (cheap && cheap !== settings.model) {
+      try {
+        console.error("[chapter-notes] 改用主模型重试翻译");
+        return await attempt(settings.model);
+      } catch (retryErr) {
+        console.error("[chapter-notes] 主模型翻译也失败，保留英文原文:", retryErr);
+      }
+    }
     // The notes are already written at this point — losing them because the
-    // (often different, cheaper) translation model failed would be worse than
-    // shipping English-only notes the user can re-translate later.
-    console.error("[chapter-notes] 翻译失败，保留英文原文:", err);
+    // translation failed would be worse than shipping English-only notes.
     return lines;
   }
 }

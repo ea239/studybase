@@ -39,14 +39,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col text-neutral-900">
         <header className="sticky top-0 z-20 border-b border-white/60 bg-white/60 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-5xl items-center gap-8 px-4 py-3">
+          <div className="mx-auto flex max-w-6xl items-center gap-8 px-4 py-3">
             <Link href="/" className="text-[15px] font-semibold tracking-tight">
               StudyBase <span className="text-neutral-400">学库</span>
             </Link>
             <NavTabs items={nav} />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
       </body>
     </html>
   );

@@ -43,15 +43,26 @@ function normalizeMath(text: string): string {
  * Chat message renderer: GitHub-flavoured markdown plus LaTeX via KaTeX, so
  * formulas and code come out typeset instead of as raw backslashes.
  */
-export function Markdown({ children }: { children: string }) {
+export function Markdown({ children, inline = false }: { children: string; inline?: boolean }) {
   const source = normalizeMath(children);
+  // Inline mode keeps the text inside the sentence it belongs to — a note
+  // bullet has its citation markers appended right after it, so wrapping the
+  // text in block-level paragraphs would push them onto their own line.
+  const Wrapper = inline ? "span" : "div";
   return (
-    <div className="flex flex-col gap-2.5 [&_a]:text-blue-600 [&_a]:underline [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
+    <Wrapper
+      className={
+        inline
+          ? "[&_a]:text-blue-600 [&_a]:underline [&_strong]:font-semibold"
+          : "flex flex-col gap-2.5 [&_a]:text-blue-600 [&_a]:underline [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5"
+      }
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           pre: ({ children }) => <>{children}</>,
+          ...(inline ? { p: ({ children }: { children?: React.ReactNode }) => <>{children}</> } : {}),
           code({ className, children, ...props }) {
             const text = String(children).replace(/\n$/, "");
             // Fenced blocks arrive with a language class; bare inline code
@@ -83,6 +94,6 @@ export function Markdown({ children }: { children: string }) {
       >
         {source}
       </ReactMarkdown>
-    </div>
+    </Wrapper>
   );
 }

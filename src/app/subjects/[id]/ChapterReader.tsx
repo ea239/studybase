@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useLang, LangToggle } from "@/components/LangProvider";
 import { Lightbox } from "@/components/Lightbox";
+import { Markdown } from "@/components/Markdown";
 import type { ChapterOverviewContent, ChapterOverviewCitation } from "@/lib/ai/chapterOverview";
 
 type Entry = {
@@ -91,6 +92,33 @@ function References({ refs }: { refs: Reference[] }) {
 // Shows the slide behind one bullet, inline right after it — the point being
 // explained sits next to its own diagram instead of a pile of slides landing
 // at the end of the section.
+/**
+ * Splits a bullet into prose and the display formulas embedded in it.
+ *
+ * `$$…$$` sitting mid-sentence is parsed as inline maths, which squeezes the
+ * formula into the line instead of giving it the panel it deserves. Pulling it
+ * out and rendering it on its own is what makes it a display formula.
+ */
+function splitDisplayMath(text: string): { type: "text" | "math"; value: string }[] {
+  const parts: { type: "text" | "math"; value: string }[] = [];
+  const pattern = /\$\$([\s\S]+?)\$\$/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > last) parts.push({ type: "text", value: text.slice(last, match.index) });
+    parts.push({ type: "math", value: match[1].trim() });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  return parts.filter((p) => p.value.trim());
+}
+
+// Citations belong at the end of the words, not after a formula panel.
+function lastTextIndex(parts: { type: "text" | "math" }[]) {
+  for (let i = parts.length - 1; i >= 0; i--) if (parts[i].type === "text") return i;
+  return -1;
+}
+
 function BulletFigure({ source }: { source: ChapterOverviewCitation }) {
   const [broken, setBroken] = useState(false);
   const [zoomed, setZoomed] = useState(false);
@@ -197,28 +225,62 @@ export default function ChapterReader({
       </div>
 
       {overview ? (
-        <div className="flex max-w-[62ch] flex-col gap-7">
+        <div className="flex max-w-[78ch] flex-col gap-7">
           {overview.sections.map((section, si) => (
             <section key={si} className="flex flex-col gap-2.5">
               <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900">
-                {section.heading[lang]}
+                <Markdown inline>{section.heading[lang]}</Markdown>
               </h2>
               <ul className="flex flex-col gap-2">
                 {section.bullets.map((bullet, bi) => {
                   const nums = bulletRefs.get(`${si}:${bi}`) ?? [];
+                  const parts = splitDisplayMath(bullet.text[lang]);
+                  const lastText = lastTextIndex(parts);
+                  // A bullet that is nothing but a formula gets no marker: the
+                  // panel is the point, and a dot beside an empty line reads
+                  // as a bullet whose text failed to load.
+                  const formulaOnly = lastText === -1;
                   return (
-                    <li key={bi} className="flex gap-2.5 text-[15px] leading-[1.7] text-neutral-700">
-                      <span aria-hidden className="mt-[9px] size-1 shrink-0 rounded-full bg-neutral-400" />
+                    <li
+                      key={bi}
+                      className={`flex gap-2.5 text-[15px] leading-[1.7] text-neutral-700 ${formulaOnly ? "mt-1" : ""}`}
+                    >
+                      {!formulaOnly && (
+                        <span aria-hidden className="mt-[9px] size-1 shrink-0 rounded-full bg-neutral-400" />
+                      )}
                       <div className="min-w-0">
                         <span data-quotable>
-                          {bullet.text[lang]}
-                          {nums.map((num) => (
-                            <sup key={num} className="ml-0.5">
-                              <a href={`#ref-${num}`} className="text-blue-600 hover:underline">
-                                [{num}]
-                              </a>
-                            </sup>
-                          ))}
+                          {(() => {
+                            const refs = nums.map((num) => (
+                              <sup key={num} className="ml-0.5">
+                                <a href={`#ref-${num}`} className="text-blue-600 hover:underline">
+                                  [{num}]
+                                </a>
+                              </sup>
+                            ));
+                            return (
+                              <>
+                                {parts.map((part: { type: "text" | "math"; value: string }, pi: number) =>
+                                  part.type === "math" ? (
+                                    // The citation rides alongside the panel
+                                    // rather than dropping to a line of its own.
+                                    <span key={pi} className="flex items-start gap-1">
+                                      <Markdown>{`$$\n${part.value}\n$$`}</Markdown>
+                                      {formulaOnly && pi === parts.length - 1 && (
+                                        <span className="mt-3">{refs}</span>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span key={pi}>
+                                      <Markdown inline>{part.value}</Markdown>
+                                      {pi === lastText && refs}
+                                    </span>
+                                  )
+                                )}
+
+                              </>
+                            );
+                          })()}
                         </span>
                         {bullet.figure && bullet.sources[0] && <BulletFigure source={bullet.sources[0]} />}
                       </div>
@@ -232,7 +294,7 @@ export default function ChapterReader({
           {refList.length > 0 && <References refs={refList} />}
         </div>
       ) : (
-        <div className="flex max-w-[62ch] flex-col gap-4">
+        <div className="flex max-w-[78ch] flex-col gap-4">
           {chapterId && (
             <div className="surface flex flex-col items-start gap-2 rounded-xl p-4">
               <p className="text-sm font-medium text-neutral-900">本章还没有生成笔记</p>

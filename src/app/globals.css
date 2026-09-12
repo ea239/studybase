@@ -154,3 +154,21 @@ body {
     transform: none;
   }
 }
+
+/* Display formulas are the thing being said, not an aside — giving them a
+   panel of their own stops them running together with the prose around them,
+   and the scroll container keeps a wide derivation from widening the page. */
+.katex-display {
+  margin: 0.6rem 0;
+  padding: 0.7rem 0.9rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: color-mix(in oklab, currentColor 4%, transparent);
+  border: 1px solid color-mix(in oklab, currentColor 10%, transparent);
+  border-radius: 0.75rem;
+}
+
+/* KaTeX sets its own font size; inline math should ride with the sentence. */
+.katex {
+  font-size: 1.02em;
+}
