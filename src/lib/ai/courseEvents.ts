@@ -83,6 +83,9 @@ export async function extractCourseEvents(
     .map((f, i) => `${i + 1}. ${f.title}\n${f.content}`)
     .join("\n\n")}`;
 
+  // Deliberately not routed to the reasoning model: reading a date out of a
+  // sentence is transcription, and a syllabus full of numbers would otherwise
+  // trip the maths heuristic for no benefit.
   const parsed = eventSchema.parse(await chatJSON(settings, SYSTEM_PROMPT, user));
 
   const events: ExtractedEvent[] = [];

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chatJSON } from "./provider";
+import { pickModel } from "./routing";
 import type { AiSettings } from "./types";
 import type { ExtractedPage } from "@/lib/pdf";
 
@@ -330,7 +331,12 @@ export async function extractStructuredContent(
   // the original one-request path: no outline call, no merging, nothing new to
   // go wrong for the common case.
   if (total <= CHUNK_CHARS) {
-    return extractionSchema.parse(await chatJSON(settings, system, joinPages(pages)));
+    const body = joinPages(pages);
+    // Routed on the document's own text: a derivation-heavy deck earns the
+    // reasoning model, a syllabus does not.
+    return extractionSchema.parse(
+      await chatJSON({ ...settings, model: pickModel(settings, "content", body) }, system, body)
+    );
   }
 
   const outline = await deriveOutline(settings, pages);
@@ -344,7 +350,9 @@ export async function extractStructuredContent(
     // One failed part should cost that part, not the document: a 44-page bank
     // is worth far more partially extracted than not at all.
     try {
-      const parsed = extractionSchema.parse(await chatJSON(settings, system, user));
+      const parsed = extractionSchema.parse(
+        await chatJSON({ ...settings, model: pickModel(settings, "content", user) }, system, user)
+      );
       results.push(parsed);
       if (parsed.summary) summaries.push(parsed.summary);
     } catch (err) {

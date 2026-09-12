@@ -7,6 +7,10 @@ export interface AiSettings {
   // "opencode" always uses OPENCODE_GO_BASE_URL below, so it's not user-editable.
   baseUrl?: string;
   model: string;
+  // Optional stronger model for work that needs reasoning rather than
+  // transcription — derivations, probability, complexity analysis. Falls back
+  // to `model` when unset. See routing.ts for when it is chosen.
+  reasoningModel?: string;
   // Optional cheaper model used only for translating already-written notes,
   // which is a mechanical task that doesn't need the main model. Falls back to
   // `model` when unset. Same provider/key — this is just a model id.

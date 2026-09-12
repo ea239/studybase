@@ -2,14 +2,84 @@
 
 import { useEffect, useState } from "react";
 import type { AiProvider } from "@/lib/ai/types";
+import { usableOpencodeModels } from "@/lib/ai/models";
 import { DEFAULT_MODELS } from "@/lib/ai/types";
 import { copyText } from "@/lib/browser";
+
+/**
+ * A model chooser. opencode Go publishes a fixed catalogue, so typing an id by
+ * hand there is just a way to make a typo — the options are the models this
+ * app has actually reached. Every other provider takes an arbitrary id and
+ * keeps a text field.
+ */
+function ModelField({
+  label,
+  value,
+  onChange,
+  provider,
+  placeholder,
+  allowEmpty = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  provider: AiProvider;
+  placeholder?: string;
+  allowEmpty?: boolean;
+}) {
+  if (provider !== "opencode") {
+    return (
+      <label className="flex flex-col gap-1 text-sm">
+        {label}
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5"
+        />
+      </label>
+    );
+  }
+
+  const models = usableOpencodeModels();
+  const families = [...new Set(models.map((m) => m.family))];
+  // A saved id that has since been withdrawn would otherwise vanish from the
+  // select and silently become whatever sits first in the list.
+  const missing = value && !models.some((m) => m.id === value) ? value : null;
+
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5"
+      >
+        {allowEmpty && <option value="">{placeholder ?? "不设置"}</option>}
+        {!allowEmpty && !value && <option value="">选择模型…</option>}
+        {missing && <option value={missing}>{missing}（当前配置，已不在列表中）</option>}
+        {families.map((family) => (
+          <optgroup key={family} label={family}>
+            {models
+              .filter((m) => m.family === family)
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label} · 每月 {m.included}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export function SettingsForm() {
   const [provider, setProvider] = useState<AiProvider>("openai");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState(DEFAULT_MODELS.openai);
+  const [reasoningModel, setReasoningModel] = useState("");
   const [translateModel, setTranslateModel] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -31,6 +101,7 @@ export function SettingsForm() {
           setApiKey(data.apiKey ?? "");
           setBaseUrl(data.baseUrl ?? "");
           setModel(data.model ?? DEFAULT_MODELS[data.provider as AiProvider]);
+          setReasoningModel(data.reasoningModel ?? "");
           setTranslateModel(data.translateModel ?? "");
         }
       })
@@ -80,7 +151,7 @@ export function SettingsForm() {
     const res = await fetch("/api/settings/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey, baseUrl, model, translateModel }),
+      body: JSON.stringify({ provider, apiKey, baseUrl, model, reasoningModel, translateModel }),
     });
     if (res.ok) setSaved(true);
   }
@@ -119,32 +190,35 @@ export function SettingsForm() {
           </label>
         )}
 
-        <label className="flex flex-col gap-1 text-sm">
-          模型名称
-          <input
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={
-              provider === "opencode" ? "例如 kimi-k3" : DEFAULT_MODELS[provider] || "例如 gpt-4o-mini"
-            }
-            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5"
-          />
-        </label>
-        {provider === "opencode" && (
-          <p className="-mt-2 text-xs text-neutral-500">
-            接口固定为 <code>https://opencode.ai/zen/go/v1</code>，模型填裸 id（如 <code>kimi-k3</code>），不加前缀。
-          </p>
-        )}
+        <ModelField
+          label="主模型"
+          value={model}
+          onChange={setModel}
+          provider={provider}
+          placeholder={DEFAULT_MODELS[provider] || "例如 gpt-4o-mini"}
+        />
+        <p className="-mt-2 text-xs text-neutral-500">日常提取、写笔记、答疑都用它。</p>
 
-        <label className="flex flex-col gap-1 text-sm">
-          翻译模型（可选）
-          <input
-            value={translateModel}
-            onChange={(e) => setTranslateModel(e.target.value)}
-            placeholder={provider === "opencode" ? "例如 deepseek-v4-flash，留空则用上面的模型" : "留空则用上面的模型"}
-            className="rounded-lg border border-neutral-200/80 bg-white/60 px-2 py-1.5"
-          />
-        </label>
+        <ModelField
+          label="推理模型（可选）"
+          value={reasoningModel}
+          onChange={setReasoningModel}
+          provider={provider}
+          placeholder="留空则始终用主模型"
+          allowEmpty
+        />
+        <p className="-mt-2 text-xs text-neutral-500">
+          遇到公式、推导、复杂度这类内容时自动改用它；其余仍走主模型。
+        </p>
+
+        <ModelField
+          label="翻译模型（可选）"
+          value={translateModel}
+          onChange={setTranslateModel}
+          provider={provider}
+          placeholder="留空则用主模型"
+          allowEmpty
+        />
         <p className="-mt-2 text-xs text-neutral-500">笔记由主模型写英文，再由它翻成中文；用便宜的小模型即可。</p>
 
         <label className="flex flex-col gap-1 text-sm">

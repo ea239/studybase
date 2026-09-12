@@ -69,26 +69,29 @@ export async function chatJSON(
     { role: "system" as const, content: `${system}\n\n${jsonInstruction}` },
     { role: "user" as const, content: user },
   ];
-  const extras = batchBodyExtras(settings);
 
-  try {
-    const resp = await client.chat.completions.create({
-      model: settings.model,
-      messages,
-      response_format: { type: "json_object" },
-      ...extras,
-    });
-    return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
-  } catch {
-    // Some OpenAI-compatible endpoints (self-hosted / custom models) reject
-    // response_format. Retry once without it, relying on the prompt alone.
-    const resp = await client.chat.completions.create({
-      model: settings.model,
-      messages,
-      ...extras,
-    });
-    return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
+  // Not every model behind the gateway accepts every option, and the ones it
+  // rejects differ per model: glm-5.x refuses `enable_thinking` but is fine
+  // with `response_format`, while kimi-k3 and hy3 take neither. So the options
+  // are shed one layer at a time rather than all at once — dropping
+  // `response_format` while keeping a flag the model already refused fails
+  // exactly as the first attempt did.
+  const attempts = [
+    { response_format: { type: "json_object" as const }, ...batchBodyExtras(settings) },
+    { response_format: { type: "json_object" as const } },
+    {},
+  ];
+
+  let lastError: unknown;
+  for (const extras of attempts) {
+    try {
+      const resp = await client.chat.completions.create({ model: settings.model, messages, ...extras });
+      return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
+    } catch (err) {
+      lastError = err;
+    }
   }
+  throw lastError;
 }
 
 function openAiClient(

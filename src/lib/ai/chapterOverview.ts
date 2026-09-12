@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chatJSON } from "./provider";
+import { pickModel } from "./routing";
 import type { AiSettings } from "./types";
 
 export type ChapterOverviewCitation = {
@@ -120,7 +121,9 @@ async function writeEnglishNotes(
   const user = `Chapter: ${chapterName}\n\nKnowledge points:\n${points
     .map((p, i) => `${i + 1}. ${p.title}\n${p.content}`)
     .join("\n\n")}`;
-  return notesSchema.parse(await chatJSON(settings, NOTES_PROMPT, user));
+  return notesSchema.parse(
+    await chatJSON({ ...settings, model: pickModel(settings, "content", user) }, NOTES_PROMPT, user)
+  );
 }
 
 // Translation is mechanical, so it runs on `translateModel` when one is set —
@@ -136,9 +139,9 @@ async function translateLines(settings: AiSettings, lines: string[]): Promise<st
     return lines.map((line, i) => parsed.lines[i] ?? line);
   };
 
-  const cheap = settings.translateModel?.trim();
+  const cheap = pickModel(settings, "translate");
   try {
-    return await attempt(cheap || settings.model);
+    return await attempt(cheap);
   } catch (err) {
     console.error("[chapter-notes] 翻译失败:", err);
     // One transient failure on the cheap model used to leave a chapter in

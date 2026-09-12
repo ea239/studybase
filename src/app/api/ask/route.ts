@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAiSettings } from "@/lib/ai/settings";
 import { chatTextStream, type ChatMessage } from "@/lib/ai/provider";
+import { pickModel } from "@/lib/ai/routing";
 
 const MAX_QUOTE = 4000;
 // The chapter being read goes in whole; the rest of the course is pulled in by
@@ -159,8 +160,10 @@ export async function POST(req: NextRequest) {
       pageText = page?.rawText.slice(0, MAX_PAGE_TEXT);
     }
 
+    // Routed on what was actually asked, plus the passage it was asked about:
+    // "什么时候截止" and "推导这个方差" want very different models.
     const deltas = chatTextStream(
-      settings,
+      { ...settings, model: pickModel(settings, "content", `${question}\n${quote ?? ""}`) },
       systemPrompt({ quote, context, pageText, chapterPoints, relatedPoints, lang }),
       messages,
       typeof body.sessionId === "string" ? body.sessionId : undefined
