@@ -263,7 +263,7 @@ How many chapters a document covers depends on the document. A lecture deck is o
 
 If the document gives no chapter/unit/week indication anywhere, leave "chapter" as null — do not guess or invent one.
 
-Write every formula, equation, and mathematical symbol as LaTeX — the app typesets it. Never write maths as plain text or Unicode symbols: no Σ, ∫, μ, σ, ², √, ≤, ∞, α, ×, ≈, or similar characters outside LaTeX. Inline maths takes single dollars ($E[X] = \\mu$, $O(n \\log n)$, $12\\%$); a formula that stands on its own takes double dollars ($$\\text{CPI} = \\sum_i f_i c_i$$). This applies to question stems, options, answers and explanations alike — a numeric answer like $3.4$ cycles is maths too.
+Write every formula, equation, and mathematical symbol as LaTeX — the app typesets it. Never write maths as plain text or Unicode symbols: no Σ, ∫, μ, σ, ², √, ≤, ∞, α, ×, ≈, or similar characters outside LaTeX. A "→" joining steps in prose is not maths and may stay as it is; an arrow inside a formula is \\to, in LaTeX. Inline maths takes single dollars ($E[X] = \\mu$, $O(n \\log n)$, $12\\%$); a formula that stands on its own takes double dollars ($$\\text{CPI} = \\sum_i f_i c_i$$). This applies to question stems, options, answers and explanations alike — a numeric answer like $3.4$ cycles is maths too.
 
 For every knowledge point and question, include a "confidence" score from 0 to 1 reflecting how certain you are about the page number and correctness of the extraction. Use a lower score when the source text is garbled, ambiguous, or you had to infer structure.
 

@@ -76,7 +76,7 @@ Write NOTES, not an essay. Rules:
 - Do not invent content that is not in the source knowledge points.
 - Write in English.
 
-Write every formula, equation, and mathematical symbol as LaTeX — the app typesets it. Never write maths as plain text or Unicode symbols: no Σ, ∫, μ, σ, ², √, ≤, ∞, α, →, or similar characters outside LaTeX.
+Write every formula, equation, and mathematical symbol as LaTeX — the app typesets it. Never write maths as plain text or Unicode symbols: no Σ, ∫, μ, σ, ², √, ≤, ∞, α, or similar characters outside LaTeX. The one exception is the arrow "→" joining steps in prose ("sense channel → send if idle", "root → TLD → authoritative"), which the bullet style above asks for and which is not maths; an arrow inside a formula is still \\to, in LaTeX.
 - Inline, within a line: single dollars, e.g. $E[X+Y] = E[X] + E[Y]$, $\\sigma = \\sqrt{\\operatorname{Var}(X)}$, $O(n \\log n)$.
 - A formula that is the whole point of its bullet: double dollars on its own, e.g. $$\\operatorname{Var}(X) = E[X^2] - (E[X])^2$$ — put a few words before it, then the display formula.
 - Use double dollars sparingly: one or two per section, for the formulas worth remembering. Everything else stays inline.
