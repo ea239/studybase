@@ -7,8 +7,27 @@ import { OPENCODE_GO_BASE_URL, type AiSettings } from "./types";
 // document behind it. Both SDKs default to a 10-minute timeout with 2 retries
 // — up to half an hour on one stuck call — which is far too long to wait
 // before giving up and moving on.
-const BATCH_TIMEOUT_MS = 3 * 60 * 1000;
-const BATCH_RETRIES = 1;
+//
+// No retries: a long extraction request that timed out will almost always
+// time out again, and a second attempt doubles the worst case for every part
+// of a chunked document. A part that fails is dropped on its own instead,
+// which costs that part rather than twice the time.
+const BATCH_TIMEOUT_MS = 5 * 60 * 1000;
+const BATCH_RETRIES = 0;
+
+// Extraction is transcription, not deduction: the answer is already in the
+// text and a chain of thought adds nothing to finding it. It is not free
+// either — a reasoning model spent ~20k characters thinking before every
+// batch call regardless of input size, which is what made long documents time
+// out. Measured on one 44-page question bank: 49k characters of source failed
+// outright with thinking on, and finished in 91 seconds with it off.
+//
+// Only opencode gets the flag; OpenAI and Anthropic reject unknown body
+// fields outright. The interactive chat path keeps its reasoning, where a
+// considered answer is the point and nothing is queued behind it.
+function batchBodyExtras(settings: AiSettings) {
+  return settings.provider === "opencode" ? { enable_thinking: false } : {};
+}
 
 // Sends a single-turn chat request and returns the parsed JSON response.
 // Supports OpenAI, Anthropic, and any OpenAI-compatible custom endpoint —
@@ -46,14 +65,18 @@ export async function chatJSON(
     maxRetries: BATCH_RETRIES,
   });
 
+  const messages = [
+    { role: "system" as const, content: `${system}\n\n${jsonInstruction}` },
+    { role: "user" as const, content: user },
+  ];
+  const extras = batchBodyExtras(settings);
+
   try {
     const resp = await client.chat.completions.create({
       model: settings.model,
-      messages: [
-        { role: "system", content: `${system}\n\n${jsonInstruction}` },
-        { role: "user", content: user },
-      ],
+      messages,
       response_format: { type: "json_object" },
+      ...extras,
     });
     return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
   } catch {
@@ -61,10 +84,8 @@ export async function chatJSON(
     // response_format. Retry once without it, relying on the prompt alone.
     const resp = await client.chat.completions.create({
       model: settings.model,
-      messages: [
-        { role: "system", content: `${system}\n\n${jsonInstruction}` },
-        { role: "user", content: user },
-      ],
+      messages,
+      ...extras,
     });
     return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
   }

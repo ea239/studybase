@@ -42,12 +42,16 @@ const extractionSchema = z.object({
 
 export type ExtractionResult = z.infer<typeof extractionSchema>;
 
-// How much source text goes into one extraction request. A whole 44-page
-// question bank in a single call (~49k chars) simply times out on the small,
-// cheap models this runs on, so anything larger is split. Kept well under what
-// the model can nominally accept: the limit that matters is the one where it
-// still answers reliably and in time, not the context window.
-const CHUNK_CHARS = 18_000;
+// How much source text goes into one extraction request.
+//
+// Splitting is a safety net for documents genuinely too large to answer in one
+// go — not a performance measure. It costs more than it saves below that line:
+// every call carries a fixed overhead, so a document split in three pays for
+// an outline pass, three extractions and a summary where one call would have
+// done. The threshold sits above the largest real file seen so far (a 44-page
+// question bank, 49k characters, which answers in ~90 seconds as a single
+// request) precisely so that file does not get split.
+const CHUNK_CHARS = 40_000;
 
 function pageBlock(page: ExtractedPage) {
   return `\n--- Page ${page.pageNumber} ---\n${page.text}`;

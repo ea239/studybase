@@ -15,11 +15,14 @@ const REVIEW_THRESHOLD = 0.6;
 // parallel: resolveChapter's dedupe cache is per-call, so concurrent runs on
 // the same subject would each create their own "Chapter 3" row; and a batch
 // upload would otherwise fire N simultaneous AI requests.
-// Backstop for the serial queue: however a job manages to hang — a wedged
-// socket, a provider that accepts a request and never answers — the documents
-// behind it must still get their turn. Comfortably longer than the AI client's
-// own timeout, so this only fires for hangs that one fails to catch.
-const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+// Backstop for the serial queue, and only that: a hang the AI client fails to
+// catch must not hold the documents behind it forever.
+//
+// It deliberately does not double as a throughput limit. A long document is
+// extracted in parts, each part bounded by the AI client's own timeout, so a
+// 44-page one legitimately takes far longer than a lecture — and cutting it
+// off part-way would throw away the parts that already succeeded.
+const JOB_TIMEOUT_MS = 45 * 60 * 1000;
 
 let queue: Promise<unknown> = Promise.resolve();
 let inFlight = 0;
