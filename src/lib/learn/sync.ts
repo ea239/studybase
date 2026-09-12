@@ -32,6 +32,8 @@ export type SyncReport = {
   course: string;
   imported: number;
   updated: number;
+  /** Files already uploaded by hand that this run claimed instead of re-downloading. */
+  adopted: number;
   skipped: number;
   error?: string;
 };
@@ -56,7 +58,7 @@ async function syncCourse(course: {
   name: string;
   subjectId: string | null;
 }): Promise<SyncReport> {
-  const report: SyncReport = { course: course.name, imported: 0, updated: 0, skipped: 0 };
+  const report: SyncReport = { course: course.name, imported: 0, updated: 0, adopted: 0, skipped: 0 };
   const topics = await listTopics(course.orgUnitId);
 
   for (const topic of topics) {
@@ -78,6 +80,23 @@ async function syncCourse(course: {
     ) {
       report.skipped++;
       continue;
+    }
+
+    // The same file may already be here from a manual upload, from before this
+    // course was ever synced. Claim that row rather than downloading a second
+    // copy — re-parsing it would also burn AI quota on work already done.
+    if (!existing) {
+      const manual = await prisma.material.findFirst({
+        where: { filename, subjectId: course.subjectId, learnTopicId: null },
+      });
+      if (manual) {
+        await prisma.material.update({
+          where: { id: manual.id },
+          data: { learnTopicId: topic.topicId, learnUpdatedAt: topic.updatedAt },
+        });
+        report.adopted++;
+        continue;
+      }
     }
 
     const buffer = await downloadTopic(course.orgUnitId, topic.topicId);
@@ -141,12 +160,12 @@ export async function syncEnabledCourses(): Promise<SyncReport[]> {
         where: { id: course.id },
         data: {
           lastSyncedAt: new Date(),
-          lastResult: `新增 ${report.imported} · 更新 ${report.updated} · 跳过 ${report.skipped}`,
+          lastResult: `新增 ${report.imported} · 更新 ${report.updated} · 认领 ${report.adopted} · 跳过 ${report.skipped}`,
         },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      reports.push({ course: course.name, imported: 0, updated: 0, skipped: 0, error: message });
+      reports.push({ course: course.name, imported: 0, updated: 0, adopted: 0, skipped: 0, error: message });
       await prisma.learnCourse.update({
         where: { id: course.id },
         data: { lastSyncedAt: new Date(), lastResult: `失败：${message}` },

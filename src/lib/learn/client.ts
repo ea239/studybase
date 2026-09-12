@@ -97,40 +97,68 @@ type ContentNode = {
   Id?: number;
   Title?: string;
   Type?: number; // 0 = module, 1 = topic
-  TopicType?: number; // 1 = file, 3 = link
+  TopicType?: number; // 1 = stored file, 3 = link
   Url?: string | null;
   LastModifiedDate?: string | null;
-  Structure?: ContentNode[];
+  IsHidden?: boolean;
+  IsBroken?: boolean;
 };
 
 /**
  * Flattens a course's content tree into downloadable file topics.
- * TopicType 1 is a stored file; links (3) point off-site and are skipped.
+ *
+ * `content/root/` alone is not enough: it returns a shallow view where topics
+ * carry neither TopicType nor Url, and nested modules come back as stubs with
+ * no children at all. Only `content/modules/{id}/structure/` returns complete
+ * objects, so each module is walked explicitly.
  */
 export async function listTopics(orgUnitId: string): Promise<LearnTopic[]> {
   const session = await requireSession();
   const { le } = await apiVersions();
-  const root: ContentNode[] = await (
-    await request(session, `${LEARN_ORIGIN}/d2l/api/le/${le}/${orgUnitId}/content/root/`)
-  ).json();
+  const base = `${LEARN_ORIGIN}/d2l/api/le/${le}/${orgUnitId}/content`;
 
   const topics: LearnTopic[] = [];
-  const walk = (nodes: ContentNode[], trail: string[]) => {
+  const visitedModules = new Set<string>();
+
+  const add = (node: ContentNode, trail: string[]) => {
+    // TopicType 1 is a stored file; links (3) point off-site. Hidden and
+    // broken topics aren't visible to the student either, so skip them.
+    if (node.TopicType !== 1 || node.IsHidden || node.IsBroken || node.Id == null) return;
+    topics.push({
+      topicId: String(node.Id),
+      title: node.Title ?? `topic-${node.Id}`,
+      url: node.Url ?? null,
+      updatedAt: node.LastModifiedDate ? new Date(node.LastModifiedDate) : null,
+      modulePath: trail,
+    });
+  };
+
+  const walk = async (nodes: ContentNode[], trail: string[]) => {
     for (const node of nodes) {
+      if (node.Id == null) continue;
+      const id = String(node.Id);
+
       if (node.Type === 0) {
-        walk(node.Structure ?? [], node.Title ? [...trail, node.Title] : trail);
-      } else if (node.Type === 1 && node.TopicType === 1 && node.Id != null) {
-        topics.push({
-          topicId: String(node.Id),
-          title: node.Title ?? `topic-${node.Id}`,
-          url: node.Url ?? null,
-          updatedAt: node.LastModifiedDate ? new Date(node.LastModifiedDate) : null,
-          modulePath: trail,
-        });
+        // Guards against a module graph that loops back on itself.
+        if (visitedModules.has(id)) continue;
+        visitedModules.add(id);
+        const children: ContentNode[] = await (
+          await request(session, `${base}/modules/${id}/structure/`)
+        ).json();
+        await walk(children, node.Title ? [...trail, node.Title] : trail);
+      } else if (node.Type === 1) {
+        // A topic sitting at the root has the same shallow shape, so fill in
+        // the missing fields from its own endpoint.
+        const full =
+          node.TopicType === undefined
+            ? ((await (await request(session, `${base}/topics/${id}`)).json()) as ContentNode)
+            : node;
+        add(full, trail);
       }
     }
   };
-  walk(root, []);
+
+  await walk(await (await request(session, `${base}/root/`)).json(), []);
   return topics;
 }
 

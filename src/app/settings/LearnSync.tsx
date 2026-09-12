@@ -46,14 +46,21 @@ export function LearnSync({ initial }: { initial: LearnState }) {
     } else if (action === "refresh") {
       setMessage(`找到 ${data.count} 门课程`);
     } else {
-      const reports: { course: string; imported: number; updated: number; error?: string }[] =
-        data.reports ?? [];
+      const reports: {
+        course: string;
+        imported: number;
+        updated: number;
+        adopted: number;
+        error?: string;
+      }[] = data.reports ?? [];
       setMessage(
         reports.length === 0
           ? "没有已启用并映射科目的课程"
           : reports
               .map((r) =>
-                r.error ? `${r.course}：${r.error}` : `${r.course}：新增 ${r.imported}，更新 ${r.updated}`
+                r.error
+                  ? `${r.course}：${r.error}`
+                  : `${r.course}：新增 ${r.imported}，更新 ${r.updated}，认领 ${r.adopted}`
               )
               .join("；")
       );
