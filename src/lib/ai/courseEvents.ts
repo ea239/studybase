@@ -38,7 +38,11 @@ For each dated item, decide how precisely the source actually fixes it:
 Rules:
 - One event per item. Do not merge a lab and its exam, or invent items the text does not state.
 - The year is often omitted. Resolve it from the current date and the course's term, and never emit a date more than a year away from the current date.
-- "kind" is LAB for labs, ASSIGNMENT for assignments/homework/projects/PD deliverables, EXAM for midterms/finals/quizzes, OTHER for anything else.
+- "kind" describes what the student has to do:
+  - LAB — labs and lab reports.
+  - ASSIGNMENT — anything else with something to hand in or take part in for credit: assignments, homework, projects, essays, reports, PD deliverables, journals, portfolios, presentations, and graded discussions or participation posts.
+  - EXAM — midterms, finals, quizzes, tests.
+  - OTHER — only dates with nothing to submit or sit: term start and end, reading week, a schedule being published, a holiday. If the student has to do something by that date, it is never OTHER.
 - "title" should be short and recognisable on a calendar ("Lab 2 截止", "Midterm"). Keep the course's own numbering.
 - Skip recurring class meetings — weekly lectures, tutorials and office hours are not events.
 - "sourceIndex" is the 1-based number of the input fact the event came from.

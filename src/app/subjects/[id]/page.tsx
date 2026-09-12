@@ -4,9 +4,8 @@ import { prisma } from "@/lib/db";
 import { STRUCTURED_TAG_LABELS } from "@/lib/labels";
 import { Practice, type PracticeQuestion } from "./Practice";
 import { SubjectSearch } from "./SubjectSearch";
-import { WorkList, type WorkItem } from "./WorkList";
-import { WorkDetail, type WorkDetailItem } from "./WorkDetail";
-import type { AssignmentBrief } from "@/lib/ai/assignmentBrief";
+import { SubjectHome } from "./SubjectHome";
+import { WorkList } from "./WorkList";
 import ChapterReader from "./ChapterReader";
 import { AskAI } from "@/components/AskAI";
 import type { ChapterOverviewContent } from "@/lib/ai/chapterOverview";
@@ -24,15 +23,15 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 const OTHER_TABS = TABS.filter((t) => t.key !== "lecture" && t.key !== "home");
 
-// A brief written by an older version reads as "not generated yet" rather
-// than rendering half-correctly.
-function parseBrief(raw: string | null | undefined): AssignmentBrief | null {
-  if (!raw) return null;
+// Facts written by an older version read as "not generated" rather than
+// rendering half-correctly.
+function parseFacts(raw: string | null | undefined): { label: string; value: string }[] {
+  if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return parsed?.version === 1 && Array.isArray(parsed.sections) ? (parsed as AssignmentBrief) : null;
+    return parsed?.version === 1 && Array.isArray(parsed.facts) ? parsed.facts : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -113,6 +112,9 @@ export default async function SubjectPage({
   const workSummary = {
     total: workItems.length,
     done: workItems.filter((e) => e.completedAt).length,
+    overdue: workItems.filter(
+      (e) => !e.completedAt && e.precision === "EXACT" && e.startsAt && e.startsAt < new Date()
+    ).length,
     next: workItems
       .filter((e) => !e.completedAt && e.precision === "EXACT" && e.startsAt)
       .sort((a, b) => a.startsAt!.getTime() - b.startsAt!.getTime())
@@ -145,10 +147,7 @@ export default async function SubjectPage({
             name: chapter?.name ?? "其他内容",
             points: entries.length,
           }))}
-          info={overviewMaterials.flatMap((m) => m.knowledgePoints).slice(0, 6).map((k) => ({
-            title: k.title,
-            content: k.content,
-          }))}
+          facts={{ status: subject.factsStatus, items: parseFacts(subject.facts) }}
           counts={{
             questions: notesMaterials.reduce((n, m) => n + m.questions.length, 0),
             labs: labMaterials.length,
@@ -164,7 +163,12 @@ export default async function SubjectPage({
           data-chapter-nav
           className="animate-fade-up -mx-4 flex snap-x gap-1 overflow-x-auto px-4 pb-1 lg:sticky lg:top-20 lg:mx-0 lg:w-52 lg:shrink-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-0"
         >
-          <div className="hidden px-3 text-xs font-medium tracking-wide text-neutral-400 uppercase lg:mb-1 lg:block">章节</div>
+          {/* Without this there is no way back to the overview from inside a
+              tile — only out of the subject entirely, and back in. */}
+          <Link href={`/subjects/${id}`} className={navItem(false)}>
+            ← 总览
+          </Link>
+          <div className="hidden px-3 text-xs font-medium tracking-wide text-neutral-400 uppercase lg:mt-4 lg:mb-1 lg:block">章节</div>
           {lectureGroups.length === 0 && <p className="px-3 text-sm text-neutral-400">暂无章节</p>}
           {lectureGroups.map(({ chapter }) => {
             const key = groupKey(chapter);
@@ -213,24 +217,12 @@ export default async function SubjectPage({
                 />
               )
             ))}
-          {tab === "work" &&
-            (() => {
-              const selected = itemParam ? subject.events.find((e) => e.id === itemParam) : null;
-              if (selected) {
-                const detail: WorkDetailItem = {
-                  id: selected.id,
-                  title: selected.title,
-                  kind: selected.kind,
-                  dueLabel: formatDue(selected),
-                  precision: selected.precision,
-                  startsAt: selected.startsAt?.toISOString() ?? null,
-                  completedAt: selected.completedAt?.toISOString() ?? null,
-                  brief: parseBrief(selected.brief),
-                  briefGeneratedAt: selected.briefGeneratedAt?.toISOString() ?? null,
-                };
-                return <WorkDetail subjectId={id} item={detail} />;
-              }
-              const items: WorkItem[] = subject.events
+          {tab === "work" && (
+            <WorkList
+              subjectId={id}
+              initialItemId={itemParam}
+              otherCount={subject.events.filter((e) => e.kind === "OTHER").length}
+              items={subject.events
                 .filter((e) => e.kind !== "OTHER")
                 .map((e) => ({
                   id: e.id,
@@ -242,9 +234,9 @@ export default async function SubjectPage({
                   approxLabel: e.approxLabel,
                   completedAt: e.completedAt?.toISOString() ?? null,
                   hasBrief: Boolean(e.brief),
-                }));
-              return <WorkList subjectId={id} items={items} />;
-            })()}
+                }))}
+            />
+          )}
 
           {tab === "exercises" && (
             <Practice questions={buildPracticeQuestions(subject.chapters, notesMaterials)} />
@@ -296,132 +288,6 @@ type Material = {
   knowledgePoints: KnowledgePoint[];
   questions: Question[];
 };
-
-/**
- * The subject's front page: what this course is, and a way into each part of
- * it. Sized by how much of the studying actually happens there — the chapters
- * are the course, the rest are ways of checking yourself against it.
- */
-function SubjectHome({
-  subjectId,
-  chapters,
-  info,
-  counts,
-  work,
-}: {
-  subjectId: string;
-  chapters: { key: string; name: string; points: number }[];
-  info: { title: string; content: string }[];
-  counts: { questions: number; labs: number; materials: number };
-  work: { total: number; done: number; next: { title: string; due: string } | null };
-}) {
-  const tile =
-    "surface surface-interactive animate-fade-up flex flex-col gap-2 rounded-2xl p-4 text-left";
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="grid items-start gap-4 lg:grid-cols-3">
-        <section className="surface animate-fade-up flex flex-col gap-3 rounded-2xl p-5">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="font-semibold tracking-tight">课程信息</h2>
-            <Link href={`/subjects/${subjectId}?tab=info`} className="text-xs text-neutral-400 hover:text-neutral-900">
-              全部 →
-            </Link>
-          </div>
-          {info.length === 0 ? (
-            <p className="text-sm text-neutral-400">还没有课程大纲。</p>
-          ) : (
-            // Clamped: a syllabus item can run for a paragraph, and one long
-            // entry would otherwise stretch this tile past the chapters beside
-            // it. The full text is a click away.
-            <ul className="flex flex-col gap-2">
-              {info.map((item, i) => (
-                <li key={i} className="line-clamp-2 text-sm">
-                  <span className="text-neutral-500">{item.title}：</span>
-                  <span className="text-neutral-800">{item.content}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="surface animate-fade-up flex flex-col gap-3 rounded-2xl p-5 lg:col-span-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="font-semibold tracking-tight">章节</h2>
-            <span className="text-xs text-neutral-400">{chapters.length} 章</span>
-          </div>
-          {chapters.length === 0 ? (
-            <p className="text-sm text-neutral-400">
-              还没有章节。去
-              <Link href="/materials" className="text-blue-600 hover:underline">
-                资料库
-              </Link>
-              上传课程资料。
-            </p>
-          ) : (
-            <ul className="grid gap-1.5 sm:grid-cols-2">
-              {chapters.map((c) => (
-                <li key={c.key}>
-                  <Link
-                    href={`/subjects/${subjectId}?tab=lecture&chapter=${c.key}`}
-                    className="flex items-baseline justify-between gap-2 rounded-xl px-3 py-2 transition-colors hover:bg-neutral-900/[0.04]"
-                  >
-                    <span className="min-w-0 truncate text-sm text-neutral-800">{c.name}</span>
-                    <span className="shrink-0 text-xs text-neutral-400">{c.points}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href={`/subjects/${subjectId}?tab=work`} className={tile}>
-          <span className="text-xs text-neutral-400">作业与考试</span>
-          <span className="text-2xl font-semibold tracking-tight">
-            {work.total - work.done}
-            <span className="ml-1 text-sm font-normal text-neutral-400">待完成</span>
-          </span>
-          {work.next ? (
-            <span className="truncate text-xs text-neutral-500">
-              最近：{work.next.title} · {work.next.due}
-            </span>
-          ) : (
-            <span className="text-xs text-neutral-400">没有待办</span>
-          )}
-        </Link>
-
-        <Link href={`/subjects/${subjectId}?tab=exercises`} className={tile}>
-          <span className="text-xs text-neutral-400">练习题</span>
-          <span className="text-2xl font-semibold tracking-tight">
-            {counts.questions}
-            <span className="ml-1 text-sm font-normal text-neutral-400">题</span>
-          </span>
-          <span className="text-xs text-neutral-400">按章节筛选，答案可隐藏</span>
-        </Link>
-
-        <Link href={`/subjects/${subjectId}?tab=lab`} className={tile}>
-          <span className="text-xs text-neutral-400">Lab</span>
-          <span className="text-2xl font-semibold tracking-tight">
-            {counts.labs}
-            <span className="ml-1 text-sm font-normal text-neutral-400">份</span>
-          </span>
-          <span className="text-xs text-neutral-400">实验与作业说明</span>
-        </Link>
-
-        <Link href="/materials" className={tile}>
-          <span className="text-xs text-neutral-400">资料</span>
-          <span className="text-2xl font-semibold tracking-tight">
-            {counts.materials}
-            <span className="ml-1 text-sm font-normal text-neutral-400">份</span>
-          </span>
-          <span className="text-xs text-neutral-400">原始课件与文档</span>
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 function SourceLink({ materialId, materialName, page }: { materialId: string; materialName: string; page: number | null }) {
   return (

@@ -9,6 +9,7 @@ import type { AiSettings } from "@/lib/ai/types";
 import { resolveChapter } from "@/lib/chapter-resolver";
 import { generateChapterOverview } from "@/lib/ai/chapterOverview";
 import { extractCourseEvents } from "@/lib/ai/courseEvents";
+import { extractCourseFacts } from "@/lib/ai/courseFacts";
 
 // Extraction below this confidence gets flagged for human review instead of
 // being silently trusted — see the "AI 分类可能出错" concern in the plan.
@@ -126,6 +127,60 @@ async function refreshCourseEvents(materialId: string, subjectId: string | null,
     }
   } catch (err) {
     console.error(`[events] ${materialId} 日期提取失败:`, err);
+  }
+}
+
+/**
+ * Rewrites a subject's at-a-glance facts from its outline documents.
+ *
+ * Runs only after an outline-type document lands, since nothing else carries
+ * this. The status is written before the work starts so the panel can say it
+ * is being written — otherwise a subject mid-generation is indistinguishable
+ * from one with nothing to show.
+ */
+async function refreshCourseFacts(subjectId: string | null, settings: AiSettings) {
+  if (!subjectId) return;
+
+  // Selected on having extracted text rather than on status: this runs while
+  // the document that triggered it is still marked PROCESSING, so a status
+  // filter excludes the very outline being read — and a course with only one
+  // outline would then never get facts at all.
+  const materials = await prisma.material.findMany({
+    where: { subjectId, category: "OVERVIEW", pages: { some: {} } },
+    select: { filename: true, pages: { orderBy: { pageNumber: "asc" }, select: { rawText: true } } },
+  });
+  if (materials.length === 0) {
+    await prisma.subject.update({ where: { id: subjectId }, data: { factsStatus: "NONE" } });
+    return;
+  }
+
+  const subject = await prisma.subject.update({
+    where: { id: subjectId },
+    data: { factsStatus: "GENERATING" },
+    select: { name: true },
+  });
+
+  try {
+    const excerpts = materials.map((m) => ({
+      materialName: m.filename,
+      text: m.pages.map((p) => p.rawText).join("\n").slice(0, 12_000),
+    }));
+    const facts = await extractCourseFacts(settings, subject.name, excerpts);
+    await prisma.subject.update({
+      where: { id: subjectId },
+      data: {
+        facts: JSON.stringify(facts),
+        factsStatus: facts.facts.length ? "READY" : "EMPTY",
+        factsGeneratedAt: new Date(),
+      },
+    });
+  } catch (err) {
+    console.error(`[facts] ${subjectId} 课程信息生成失败:`, err);
+    // Back to NONE rather than stuck on GENERATING, which would claim work is
+    // in progress forever.
+    await prisma.subject
+      .update({ where: { id: subjectId }, data: { factsStatus: "NONE" } })
+      .catch(() => {});
   }
 }
 
@@ -350,6 +405,9 @@ export async function processMaterial(materialId: string) {
     }
 
     await refreshCourseEvents(materialId, material.subjectId, aiSettings);
+    if (material.category === "OVERVIEW") {
+      await refreshCourseFacts(material.subjectId, aiSettings);
+    }
 
     const lowConfidence = [...result.knowledgePoints, ...result.questions].some(
       (item) => (item.confidence ?? 1) < REVIEW_THRESHOLD

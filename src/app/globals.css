@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf9f7;
+  --foreground: #37352f;
 }
 
 @theme inline {
@@ -10,17 +10,34 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* The whole app is written in neutral-*, which is a dead grey. Warming the
+     scale here tints every one of those usages at once, rather than rewriting
+     several hundred class names — and keeps a single place to tune it. These
+     are Tailwind's stone values. */
+  --color-neutral-50: #fafaf9;
+  --color-neutral-100: #f5f5f4;
+  --color-neutral-200: #e7e5e4;
+  --color-neutral-300: #d6d3d1;
+  --color-neutral-400: #a8a29e;
+  --color-neutral-500: #78716c;
+  --color-neutral-600: #57534e;
+  --color-neutral-700: #44403c;
+  --color-neutral-800: #292524;
+  --color-neutral-900: #292524;
+  --color-neutral-950: #1c1917;
 }
 
 body {
-  /* Frosted panels only read as glass if there is something behind them, so
-     the canvas is a tinted slate base with two soft color blooms rather than
-     a near-white wash. */
-  background-color: #e8eaf0;
+  /* Warm paper, in the register Notion works in: an off-white with a little
+     ochre in it rather than a blue-grey. Frosted panels still need something
+     behind them to read as glass, so the blooms stay — just warm and much
+     fainter, so the canvas reads as paper and not as a gradient. */
+  background-color: #f3f1ec;
   background-image:
-    radial-gradient(900px 600px at 12% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
-    radial-gradient(800px 600px at 92% 4%, rgba(14, 165, 233, 0.13), transparent 62%),
-    linear-gradient(180deg, #eef0f5 0%, #e6e9f0 55%, #e2e5ee 100%);
+    radial-gradient(900px 600px at 12% -10%, rgba(214, 171, 118, 0.13), transparent 60%),
+    radial-gradient(800px 600px at 92% 4%, rgba(198, 160, 122, 0.10), transparent 62%),
+    linear-gradient(180deg, #faf8f4 0%, #f4f1ea 55%, #efebe3 100%);
   background-attachment: fixed;
   color: var(--foreground);
   font-size: 15px;
@@ -30,13 +47,15 @@ body {
 /* Frosted panel used for every card-like surface. Replaces the old opaque
    white + hard gray border look. */
 .surface {
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 253, 250, 0.66);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  /* Shadows carry the warmth too — a blue-black shadow over warm paper is
+     what makes a "warm" palette still look cold. */
   box-shadow:
-    0 1px 2px rgba(16, 24, 40, 0.04),
-    0 14px 36px -18px rgba(16, 24, 40, 0.28);
+    0 1px 2px rgba(60, 46, 30, 0.04),
+    0 14px 36px -18px rgba(60, 46, 30, 0.22);
 }
 
 /* Interactive variant: lifts slightly on hover. */
@@ -49,11 +68,11 @@ body {
 
 .surface-interactive:hover {
   transform: translateY(-3px);
-  background: rgba(255, 255, 255, 0.82);
-  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 254, 252, 0.88);
+  border-color: rgba(255, 255, 255, 0.92);
   box-shadow:
-    0 1px 2px rgba(16, 24, 40, 0.04),
-    0 26px 48px -22px rgba(16, 24, 40, 0.38);
+    0 1px 2px rgba(60, 46, 30, 0.04),
+    0 26px 48px -22px rgba(60, 46, 30, 0.3);
 }
 
 /* ---- Ask-AI split layout -------------------------------------------------
@@ -171,4 +190,14 @@ body {
 /* KaTeX sets its own font size; inline math should ride with the sentence. */
 .katex {
   font-size: 1.02em;
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: none; }
 }

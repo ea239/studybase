@@ -21,7 +21,16 @@ function citationKey(c: BriefCitation) {
   return `${c.materialId}:${c.sourcePage ?? ""}`;
 }
 
-export function WorkDetail({ subjectId, item }: { subjectId: string; item: WorkDetailItem }) {
+export function WorkDetail({
+  subjectId,
+  item,
+  embedded = false,
+}: {
+  subjectId: string;
+  item: WorkDetailItem;
+  /** Inside the popup, which supplies its own title bar and close control. */
+  embedded?: boolean;
+}) {
   const [brief, setBrief] = useState(item.brief);
   const [generatedAt, setGeneratedAt] = useState(item.briefGeneratedAt);
   const [busy, setBusy] = useState(false);
@@ -66,14 +75,16 @@ export function WorkDetail({ subjectId, item }: { subjectId: string; item: WorkD
   }
 
   return (
-    <div className="flex max-w-[78ch] flex-col gap-5">
+    <div className={`flex flex-col gap-5 ${embedded ? "" : "max-w-[78ch]"}`}>
       <div className="flex flex-col gap-1">
-        <Link
-          href={`/subjects/${subjectId}?tab=work`}
-          className="w-fit text-xs text-neutral-400 transition-colors hover:text-neutral-700"
-        >
-          ← 全部作业
-        </Link>
+        {!embedded && (
+          <Link
+            href={`/subjects/${subjectId}?tab=work`}
+            className="w-fit text-xs text-neutral-400 transition-colors hover:text-neutral-700"
+          >
+            ← 全部作业
+          </Link>
+        )}
         <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-neutral-900">
           {item.title}
         </h1>

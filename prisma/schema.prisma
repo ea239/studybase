@@ -46,6 +46,21 @@ model Subject {
   materials Material[]
   learnCourses LearnCourse[]
   events    CourseEvent[]
+
+  /// The course's administrative facts at a glance, written from its outline.
+  /// `factsStatus` is stored rather than inferred so the panel can say it is
+  /// working: without it, "no facts yet" and "being written right now" look
+  /// identical to anyone waiting.
+  facts            String?
+  factsStatus      SubjectFactsStatus @default(NONE)
+  factsGeneratedAt DateTime?
+}
+
+enum SubjectFactsStatus {
+  NONE // no outline-type material to read yet
+  GENERATING
+  READY
+  EMPTY // read the outline, found nothing worth showing
 }
 
 model Chapter {

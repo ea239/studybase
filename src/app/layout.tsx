@@ -39,7 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col text-neutral-900">
-        <header className="sticky top-0 z-20 border-b border-white/60 bg-white/60 backdrop-blur-xl">
+        <header className="sticky top-0 z-20 border-b border-white/60 bg-[rgba(255,253,250,0.7)] backdrop-blur-xl">
           <div className="mx-auto flex max-w-6xl items-center gap-8 px-4 py-3">
             <Link href="/" className="text-[15px] font-semibold tracking-tight">
               StudyBase <span className="text-neutral-400">学库</span>
