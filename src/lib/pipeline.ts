@@ -55,9 +55,10 @@ export function enqueueProcessMaterial(materialId: string) {
     // files in one upload is written once rather than after every file.
     if (inFlight === 0) {
       try {
+        await pruneEmptyChapters();
         await flushChapterNotes();
       } catch (err) {
-        console.error("[pipeline] 章节笔记生成失败:", err);
+        console.error("[pipeline] 章节收尾失败:", err);
       }
     }
   };
@@ -83,6 +84,21 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
     );
     work.then(resolve, reject).finally(() => clearTimeout(timer));
   });
+}
+
+// Re-processing moves items to whichever chapter they resolve to now, which
+// can leave the chapter they used to sit in holding nothing at all. Those are
+// artefacts of a previous run, and left alone they accumulate in the sidebar
+// as empty entries. Only chapters with no content of any kind are removed.
+async function pruneEmptyChapters() {
+  const { count } = await prisma.chapter.deleteMany({
+    where: {
+      knowledgePoints: { none: {} },
+      questions: { none: {} },
+      materials: { none: {} },
+    },
+  });
+  if (count) console.log(`[pipeline] 清理了 ${count} 个空章节`);
 }
 
 // Chapter notes are written automatically after new material lands, so the
