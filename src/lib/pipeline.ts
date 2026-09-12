@@ -21,15 +21,45 @@ const chaptersNeedingNotes = new Set<string>();
 
 export function enqueueProcessMaterial(materialId: string) {
   inFlight++;
-  queue = queue
-    .then(() => processMaterial(materialId))
-    .catch(() => {})
-    .then(() => {
-      inFlight--;
-      // Only once the whole batch is done, so a chapter touched by several
-      // files in one upload is written once rather than after every file.
-      if (inFlight === 0) return flushChapterNotes();
-    });
+
+  const run = async () => {
+    try {
+      await processMaterial(materialId);
+    } catch (err) {
+      // processMaterial records its own failures on the row. This catches the
+      // ones it cannot — a write that fails while it is writing the failure —
+      // so the job still ends visibly rather than disappearing.
+      console.error(`[pipeline] ${materialId} 处理失败:`, err);
+      await prisma.material
+        .update({
+          where: { id: materialId },
+          data: {
+            status: "FAILED",
+            errorMessage: err instanceof Error ? err.message : "处理失败，原因未知",
+          },
+        })
+        .catch(() => {});
+    }
+
+    inFlight--;
+    // Only once the whole batch is done, so a chapter touched by several
+    // files in one upload is written once rather than after every file.
+    if (inFlight === 0) {
+      try {
+        await flushChapterNotes();
+      } catch (err) {
+        console.error("[pipeline] 章节笔记生成失败:", err);
+      }
+    }
+  };
+
+  // Chained on settlement rather than on success, and `run` itself never
+  // rejects. Both matter: `.then(fn)` on a rejected promise skips fn entirely,
+  // so a queue that ever settles rejected silently drops every job chained
+  // onto it afterwards — and since the dropped job still decrements inFlight
+  // and re-runs the notes step, one failure there poisons the queue again on
+  // its way out, permanently.
+  queue = queue.then(run, run);
   return queue;
 }
 
@@ -40,7 +70,11 @@ async function flushChapterNotes() {
   chaptersNeedingNotes.clear();
   if (ids.length === 0) return;
 
-  const settings = await getAiSettings();
+  // Outside the per-chapter try below, so this one needs its own guard.
+  const settings = await getAiSettings().catch((err) => {
+    console.error("[chapter-notes] 读取 AI 设置失败:", err);
+    return null;
+  });
   if (!settings) return;
 
   for (const chapterId of ids) {

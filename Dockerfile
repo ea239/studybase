@@ -56,6 +56,10 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # dependency, so Next's dependency trace skips it and every PDF path then fails
 # with "DOMMatrix is not defined".
 COPY --from=builder /app/node_modules/@napi-rs ./node_modules/@napi-rs
+# Same story for pdfjs: it loads pdf.worker.mjs by path at runtime, so the
+# trace ships pdf.mjs alone and every parse dies on "Cannot find module
+# .../pdf.worker.mjs".
+COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
 
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
