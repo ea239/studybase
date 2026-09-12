@@ -2,6 +2,22 @@ import { LEARN_ORIGIN, readLearnSession, type LearnSession } from "./session";
 
 // Thrown when LEARN answers as if nobody is logged in. Callers surface this as
 // "session expired, run the login script again" rather than a generic failure.
+/**
+ * The file exists but this account cannot have it yet.
+ *
+ * Online courses release modules on a schedule, and a locked one is not a
+ * failure to retry-and-give-up on — it simply is not available yet and will
+ * be on a later sync. LEARN makes this needlessly hard to tell apart: the API
+ * answers 404, exactly as it does for a file that is genuinely gone, and only
+ * a direct fetch reveals the redirect to its 403 page.
+ */
+export class LearnLockedError extends Error {
+  constructor(message = "尚未开放") {
+    super(message);
+    this.name = "LearnLockedError";
+  }
+}
+
 export class LearnAuthError extends Error {
   constructor(message = "LEARN 会话已失效，请重新登录") {
     super(message);
@@ -27,14 +43,16 @@ async function apiVersions() {
   return versionCache;
 }
 
+// Brightspace serves a login redirect to clients it doesn't recognise.
+const BROWSER_UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 async function request(session: LearnSession, url: string, accept = "application/json") {
   const res = await fetch(url, {
     headers: {
       Accept: accept,
       Cookie: session.cookieHeader,
-      // Brightspace serves a login redirect to clients it doesn't recognise.
-      "User-Agent":
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "User-Agent": BROWSER_UA,
     },
     redirect: "manual",
   });
@@ -182,16 +200,45 @@ export async function listTopics(orgUnitId: string): Promise<LearnTopic[]> {
   return topics;
 }
 
-/** Downloads a topic's file bytes. */
-export async function downloadTopic(orgUnitId: string, topicId: string): Promise<Buffer> {
+/**
+ * Downloads a topic's file bytes.
+ *
+ * Falls back to the path LEARN reports for the file when the API refuses it:
+ * the two disagree often enough to be worth trying, and the fallback is also
+ * the only way to tell a locked file from a missing one.
+ */
+export async function downloadTopic(
+  orgUnitId: string,
+  topicId: string,
+  url?: string | null
+): Promise<Buffer> {
   const session = await requireSession();
   const { le } = await apiVersions();
-  const res = await request(
-    session,
-    `${LEARN_ORIGIN}/d2l/api/le/${le}/${orgUnitId}/content/topics/${topicId}/file`,
-    "*/*"
-  );
-  return Buffer.from(await res.arrayBuffer());
+
+  try {
+    const res = await request(
+      session,
+      `${LEARN_ORIGIN}/d2l/api/le/${le}/${orgUnitId}/content/topics/${topicId}/file`,
+      "*/*"
+    );
+    return Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    if (err instanceof LearnAuthError || !url) throw err;
+
+    const direct = await fetch(`${LEARN_ORIGIN}${url}`, {
+      headers: { Accept: "*/*", Cookie: session.cookieHeader, "User-Agent": BROWSER_UA },
+      redirect: "manual",
+    });
+
+    if (direct.ok) return Buffer.from(await direct.arrayBuffer());
+
+    // D2L sends locked content to its own 403 page rather than answering 403.
+    const location = direct.headers.get("location") ?? "";
+    if (direct.status === 403 || location.includes("/d2l/error/403")) {
+      throw new LearnLockedError();
+    }
+    throw err;
+  }
 }
 
 async function requireSession() {

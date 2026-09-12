@@ -1,7 +1,14 @@
 import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
 import { enqueueProcessMaterial } from "@/lib/pipeline";
-import { LearnAuthError, downloadTopic, listCourses, listTopics, type LearnTopic } from "./client";
+import {
+  LearnAuthError,
+  LearnLockedError,
+  downloadTopic,
+  listCourses,
+  listTopics,
+  type LearnTopic,
+} from "./client";
 import { isOfficeFile } from "@/lib/office";
 
 // Everything else on LEARN (zip, mp4, sql, …) is skipped rather than imported
@@ -55,6 +62,14 @@ export type SyncReport = {
    * course, so a single missing file cost every other file behind it.
    */
   failed: { filename: string; reason: string }[];
+  /**
+   * Files the course has not released to this account yet, by name.
+   *
+   * Separate from `failed` because it is not a problem and needs no action:
+   * an online course unlocks its modules as the term goes on, and each sync
+   * simply tries again.
+   */
+  locked: string[];
   error?: string;
 };
 
@@ -86,6 +101,7 @@ async function syncCourse(course: {
     skipped: 0,
     unsupported: [],
     failed: [],
+    locked: [],
   };
   const topics = await listTopics(course.orgUnitId);
 
@@ -116,6 +132,10 @@ async function syncCourse(course: {
       // A dead session fails every remaining file the same way, so that one
       // still stops the course; anything else costs only this file.
       if (err instanceof LearnAuthError) throw err;
+      if (err instanceof LearnLockedError) {
+        report.locked.push(filename);
+        continue;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       console.error(`[learn] ${course.name} / ${filename} 导入失败:`, reason);
       report.failed.push({ filename, reason: reason.slice(0, 120) });
@@ -151,7 +171,7 @@ async function importTopic(
     }
   }
 
-  const buffer = await downloadTopic(course.orgUnitId, topic.topicId);
+  const buffer = await downloadTopic(course.orgUnitId, topic.topicId, topic.url);
 
   if (existing) {
     // Re-uploaded by the instructor: replace the file and re-run the parse,
@@ -214,6 +234,9 @@ export async function syncEnabledCourses(): Promise<SyncReport[]> {
           (report.unsupported.length
             ? ` · 格式不支持 ${report.unsupported.length}：${report.unsupported.join("、")}`
             : "") +
+          (report.locked.length
+            ? ` · 尚未开放 ${report.locked.length}：${report.locked.join("、")}`
+            : "") +
           (report.failed.length
             ? ` · 下载失败 ${report.failed.length}：${report.failed.map((f) => f.filename).join("、")}`
             : ""),
@@ -229,6 +252,7 @@ export async function syncEnabledCourses(): Promise<SyncReport[]> {
       skipped: 0,
       unsupported: [],
       failed: [],
+      locked: [],
       error: message,
     });
     await prisma.learnCourse.update({

@@ -54,6 +54,7 @@ export function LearnSync({ initial }: { initial: LearnState }) {
         adopted: number;
         unsupported?: string[];
         failed?: { filename: string }[];
+        locked?: string[];
         error?: string;
       }[] = data.reports ?? [];
       setMessage(
@@ -65,6 +66,7 @@ export function LearnSync({ initial }: { initial: LearnState }) {
                   ? `${r.course}：${r.error}`
                   : `${r.course}：新增 ${r.imported}，更新 ${r.updated}，认领 ${r.adopted}` +
                     (r.unsupported?.length ? `，格式不支持 ${r.unsupported.length}` : "") +
+                    (r.locked?.length ? `，尚未开放 ${r.locked.length}` : "") +
                     (r.failed?.length ? `，下载失败 ${r.failed.length}` : "")
               )
               .join("；")
