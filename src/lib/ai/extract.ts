@@ -256,9 +256,11 @@ Given the raw text of a document, page by page, extract:
 
 For every knowledge point and question, also determine which chapter/unit/week it belongs to, using the actual titles, headers, or running headers that appear in the source text itself (e.g. a title slide reading "Chapter 3: Query Optimization", a running header, a slide footer showing a unit number, "第三章", "Week 5", "Unit 2"). Put this in a "chapter" field, using the chapter number and title as it literally appears in the source (e.g. "Chapter 3: Query Optimization").
 
-The chapter is the teaching unit the whole document belongs to — the lecture, chapter or week named on its title slide or running header. It is NOT a section heading inside that unit. A slide titled "Variance" inside "Lecture 4: Probability Review II" belongs to chapter "Lecture 4: Probability Review II", not to a chapter called "Variance" or "Lecture 4: Probability Review II - Variance". Normally every item in one document shares one chapter value; give the same string every time, spelled identically.
+A chapter is a teaching unit — a lecture, chapter or week — not a section heading within one. A slide titled "Variance" inside "Lecture 4: Probability Review II" belongs to chapter "Lecture 4: Probability Review II"; it is not its own chapter, and not "Lecture 4: Probability Review II - Variance" either. Whenever two items belong to the same unit, give the chapter string identically both times, so they group together.
 
-The exception is a document that genuinely spans two teaching units — it starts under one chapter and later moves to the next. Only then should different items get different "chapter" values. If the document gives no chapter/unit/week indication anywhere, leave "chapter" as null — do not guess or invent one.
+How many chapters a document covers depends on the document. A lecture deck is one unit, so every item in it takes the same chapter. A question bank, review sheet or exam paper is usually organised by chapter and covers many, so each item takes the chapter of the section it sits under — do not collapse those onto a single chapter. Prefer the unit's own number and title ("Chapter 3: Transport Layer") over a heading that merely repeats the course code ("ECE 358: Transport Layer"), when both appear.
+
+If the document gives no chapter/unit/week indication anywhere, leave "chapter" as null — do not guess or invent one.
 
 For every knowledge point and question, include a "confidence" score from 0 to 1 reflecting how certain you are about the page number and correctness of the extraction. Use a lower score when the source text is garbled, ambiguous, or you had to infer structure.
 

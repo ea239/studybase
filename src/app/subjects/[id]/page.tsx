@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { DIFFICULTY_LABELS, STRUCTURED_TAG_LABELS } from "@/lib/labels";
+import { STRUCTURED_TAG_LABELS } from "@/lib/labels";
+import { Practice, type PracticeQuestion } from "./Practice";
 import ChapterReader from "./ChapterReader";
 import { AskAI } from "@/components/AskAI";
 import type { ChapterOverviewContent } from "@/lib/ai/chapterOverview";
@@ -141,7 +142,9 @@ export default async function SubjectPage({
                 />
               )
             ))}
-          {tab === "exercises" && <Exercises chapters={subject.chapters} materials={notesMaterials} />}
+          {tab === "exercises" && (
+            <Practice questions={buildPracticeQuestions(subject.chapters, notesMaterials)} />
+          )}
           {tab === "lab" && <LabList materials={labMaterials} />}
           {tab === "info" && <CourseInfo materials={overviewMaterials} />}
         </div>
@@ -218,69 +221,50 @@ function groupByChapter<T extends { chapterId: string | null }>(
   return ordered;
 }
 
-function Exercises({ chapters, materials }: { chapters: Chapter[]; materials: Material[] }) {
-  const grouped = groupByChapter(
-    chapters,
-    materials.map((m) => ({ id: m.id, filename: m.filename, chapterId: m.chapterId, items: m.questions }))
-  );
-  const totalQuestions = materials.reduce((sum, m) => sum + m.questions.length, 0);
+// Flattens every question in the subject into the shape the practice view
+// needs, resolving each one's chapter up front: a question inherits its
+// material's chapter when the extraction didn't give it one of its own.
+function buildPracticeQuestions(chapters: Chapter[], materials: Material[]): PracticeQuestion[] {
+  const names = new Map(chapters.map((c) => [c.id, c.name]));
+  const order = new Map(chapters.map((c, i) => [c.id, i]));
 
-  if (totalQuestions === 0) {
-    return (
-      <p className="text-sm text-neutral-500">
-        还没有题目。上传课程资料（讲义/习题）后，AI 会自动从中提取练习题；已支持的题目也可以通过 GPT 插件按章节查询。
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      {grouped.map(({ chapter, entries }) => (
-        <div key={chapter?.id ?? "unassigned"}>
-          <h2 className="mb-2 font-semibold">
-            {chapter?.name ?? "未分配章节"} ({entries.length})
-          </h2>
-          <div className="flex flex-col gap-2">
-            {entries.map(({ materialId, materialName, item }) => {
-              const options: string[] | null = item.options ? JSON.parse(item.options) : null;
-              return (
-                <details key={item.id} className="surface rounded-xl px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium">{item.stem}</summary>
-                  {options && (
-                    <ul className="mt-2 flex flex-col gap-1 text-sm text-neutral-700">
-                      {options.map((opt, i) => (
-                        <li key={i}>{opt}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
-                      {DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty}
-                    </span>
-                  </div>
-                  <div className="mt-2 rounded-md bg-neutral-50 p-2 text-sm">
-                    <p>
-                      <span className="font-medium">答案：</span>
-                      {item.answer}
-                    </p>
-                    {item.explanation && (
-                      <p className="mt-1 text-neutral-700">
-                        <span className="font-medium">解析：</span>
-                        {item.explanation}
-                      </p>
-                    )}
-                  </div>
-                  <div className="mt-2">
-                    <SourceLink materialId={materialId} materialName={materialName} page={item.sourcePage} />
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
+  const questions = materials.flatMap((material) =>
+    material.questions.map((q) => {
+      const chapterId = q.chapterId ?? material.chapterId ?? null;
+      let options: string[] | null = null;
+      if (q.options) {
+        // Stored as a JSON string; a malformed one must not take the page down.
+        try {
+          const parsed = JSON.parse(q.options);
+          if (Array.isArray(parsed) && parsed.length) options = parsed.map(String);
+        } catch {
+          options = null;
+        }
+      }
+      return {
+        id: q.id,
+        stem: q.stem,
+        options,
+        answer: q.answer,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        sourcePage: q.sourcePage,
+        materialId: material.id,
+        materialName: material.filename,
+        chapterId,
+        chapterName: (chapterId && names.get(chapterId)) || "未分配章节",
+      };
+    })
   );
+
+  // Chapter order first, then page order, so working straight through follows
+  // the course rather than the order files happened to be uploaded.
+  return questions.sort((a, b) => {
+    const ca = a.chapterId ? (order.get(a.chapterId) ?? 1e6) : 1e6 + 1;
+    const cb = b.chapterId ? (order.get(b.chapterId) ?? 1e6) : 1e6 + 1;
+    if (ca !== cb) return ca - cb;
+    return (a.sourcePage ?? 0) - (b.sourcePage ?? 0);
+  });
 }
 
 function tagGroups<T extends KnowledgePoint>(items: T[]) {

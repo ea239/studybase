@@ -33,6 +33,29 @@ function chapterName(label: string): string {
   return (match?.[1] ?? trimmed).trim();
 }
 
+// Finds the chapter among `pool` whose title says the same thing as `label`'s.
+//
+// Exact on the whole descriptive part, or — for a title of at least two words
+// — contained word-for-word in the candidate's, so "Link Layer" joins "The
+// Link Layer and LANs". The two-word floor stops a one-word heading like
+// "Overview" swallowing an unrelated chapter, and the closest fit wins so a
+// terse heading joins the chapter that adds least to it.
+function matchByTitle<T extends { name: string }>(label: string, pool: T[]): T | undefined {
+  const title = chapterTitle(label);
+  const words = new Set(title.split(" ").filter(Boolean));
+  if (!words.size) return undefined;
+
+  return pool
+    .filter((c) => {
+      const other = chapterTitle(c.name);
+      if (other === title) return true;
+      if (words.size < 2 || !other) return false;
+      const otherWords = new Set(other.split(" ").filter(Boolean));
+      return [...words].every((w) => otherWords.has(w));
+    })
+    .sort((a, b) => chapterTitle(a.name).length - chapterTitle(b.name).length)[0];
+}
+
 // The descriptive part of a label, with any leading unit or course-code prefix
 // removed: "Chapter 2 Application Layer" and "ECE 358: Application Layer" both
 // reduce to "application layer".
@@ -70,17 +93,31 @@ export async function resolveChapter(
 
   const existing = await prisma.chapter.findMany({ where: { subjectId } });
 
-  let match = existing.find((c) => chapterKey(c.name) === key);
+  const numbered = (c: { name: string }) => /^\d+$/.test(chapterKey(c.name));
 
-  // No unit number in this label: fall back to matching an existing chapter by
-  // its title, so "ECE 358: Application Layer" lands in "Chapter 2 Application
-  // Layer" rather than starting a chapter of its own.
+  // A label carrying a unit number is unambiguous: match on the number alone.
+  let match = /^\d+$/.test(key) ? existing.find((c) => chapterKey(c.name) === key) : undefined;
+
   if (!match && !/^\d+$/.test(key)) {
-    const title = chapterTitle(label);
-    if (title) match = existing.find((c) => chapterTitle(c.name) === title);
+    // No unit number in the label. A numbered chapter is the canonical unit,
+    // so try to join one of those by title first — including in preference to
+    // a numberless chapter of this exact name, which is likely an artefact of
+    // an earlier run that had no numbered chapter to join yet.
+    match =
+      matchByTitle(label, existing.filter(numbered)) ??
+      matchByTitle(label, existing) ??
+      existing.find((c) => chapterKey(c.name) === key);
   }
 
   if (match) {
+    // Heal a name left over from an earlier run that carried a section
+    // heading, now that the matching label has arrived — otherwise the chapter
+    // keeps a title like "Lecture 4: Probability Review II - Expectation"
+    // forever, just because that slide was extracted first.
+    const tidied = chapterName(match.name);
+    if (tidied !== match.name) {
+      await prisma.chapter.update({ where: { id: match.id }, data: { name: tidied } });
+    }
     cache.set(cacheKey, match.id);
     return match.id;
   }
