@@ -7,6 +7,14 @@ export interface AiSettings {
   // "opencode" always uses OPENCODE_GO_BASE_URL below, so it's not user-editable.
   baseUrl?: string;
   model: string;
+  /**
+   * Models the in-article Q&A tries, in order.
+   *
+   * A subscription meters each model separately, so the one that runs dry
+   * first does not take answering with it — the next in line picks it up.
+   * Empty falls back to `model`.
+   */
+  chatModels?: string[];
   // Optional stronger model for work that needs reasoning rather than
   // transcription — derivations, probability, complexity analysis. Falls back
   // to `model` when unset. See routing.ts for when it is chosen.

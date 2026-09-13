@@ -34,6 +34,15 @@ export async function POST(req: NextRequest) {
     provider,
     apiKey,
     model,
+    // Ordered, de-duplicated, empties dropped: the list is a fallback chain,
+    // and a blank or repeated entry in it is a wasted attempt.
+    chatModels: Array.isArray(body.chatModels)
+      ? [
+          ...new Set(
+            (body.chatModels as unknown[]).map((m) => String(m ?? "").trim()).filter((m) => m)
+          ),
+        ]
+      : undefined,
     reasoningModel: String(body.reasoningModel ?? "").trim() || undefined,
     translateModel: String(body.translateModel ?? "").trim() || undefined,
     baseUrl: provider === "opencode" ? OPENCODE_GO_BASE_URL : provider === "custom" ? String(body.baseUrl) : undefined,

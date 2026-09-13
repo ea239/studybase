@@ -30,7 +30,7 @@ function ModelField({
   if (provider !== "opencode") {
     return (
       <label className="flex flex-col gap-1 text-sm">
-        {label}
+        {label || null}
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -49,7 +49,7 @@ function ModelField({
 
   return (
     <label className="flex flex-col gap-1 text-sm">
-      {label}
+      {label || null}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -79,6 +79,7 @@ export function SettingsForm() {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState(DEFAULT_MODELS.openai);
+  const [chatModels, setChatModels] = useState<string[]>([]);
   const [reasoningModel, setReasoningModel] = useState("");
   const [translateModel, setTranslateModel] = useState("");
   const [saved, setSaved] = useState(false);
@@ -101,6 +102,7 @@ export function SettingsForm() {
           setApiKey(data.apiKey ?? "");
           setBaseUrl(data.baseUrl ?? "");
           setModel(data.model ?? DEFAULT_MODELS[data.provider as AiProvider]);
+          setChatModels(Array.isArray(data.chatModels) ? data.chatModels : []);
           setReasoningModel(data.reasoningModel ?? "");
           setTranslateModel(data.translateModel ?? "");
         }
@@ -151,7 +153,7 @@ export function SettingsForm() {
     const res = await fetch("/api/settings/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey, baseUrl, model, reasoningModel, translateModel }),
+      body: JSON.stringify({ provider, apiKey, baseUrl, model, chatModels, reasoningModel, translateModel }),
     });
     if (res.ok) setSaved(true);
   }
@@ -209,6 +211,33 @@ export function SettingsForm() {
         />
         <p className="-mt-2 text-xs text-neutral-500">
           遇到公式、推导、复杂度这类内容时自动改用它；其余仍走主模型。
+        </p>
+
+        <div className="flex flex-col gap-1 text-sm">
+          <span>答疑模型（按顺序尝试）</span>
+          {[0, 1, 2].map((i) => (
+            <ModelField
+              key={i}
+              label=""
+              value={chatModels[i] ?? ""}
+              onChange={(v) =>
+                setChatModels((prev) => {
+                  const next = [...prev];
+                  if (v) next[i] = v;
+                  else next.splice(i, 1);
+                  // Compacted so a cleared middle entry does not leave a hole
+                  // the fallback chain would step over.
+                  return next.filter(Boolean);
+                })
+              }
+              provider={provider}
+              placeholder={i === 0 ? "留空则用主模型" : "不设置"}
+              allowEmpty
+            />
+          ))}
+        </div>
+        <p className="-mt-2 text-xs text-neutral-500">
+          文章内问答优先用第一个；额度用尽或该模型不可用时，自动改用下一个。
         </p>
 
         <ModelField

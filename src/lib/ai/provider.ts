@@ -152,7 +152,56 @@ export async function chatText(
 
 // Streaming variant of chatText — yields content deltas as they arrive so the
 // answer can render progressively instead of appearing all at once.
+/**
+ * Whether a failure is worth trying the next model for.
+ *
+ * Being out of quota, rate-limited or served by a provider having a moment are
+ * all "this model, right now" problems that another model can answer. A
+ * malformed request is not: it will fail identically on every model in the
+ * list, and cascading through them only makes the user wait longer for the
+ * same error.
+ */
+function worthAnotherModel(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (status === 429 || status === 402 || status === 403 || (status != null && status >= 500)) {
+    return true;
+  }
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return /quota|insufficient|rate limit|balance|unavailable|overloaded|capacity|not supported/.test(
+    message
+  );
+}
+
 export async function* chatTextStream(
+  settings: AiSettings,
+  system: string,
+  messages: ChatMessage[],
+  sessionId?: string
+): AsyncGenerator<string> {
+  const models = settings.chatModels?.length ? settings.chatModels : [settings.model];
+  let lastError: unknown;
+
+  for (const model of models) {
+    // Only before the first token: once the answer has started, switching
+    // models would splice two different answers together.
+    let started = false;
+    try {
+      for await (const delta of streamOnce({ ...settings, model }, system, messages, sessionId)) {
+        started = true;
+        yield delta;
+      }
+      return;
+    } catch (err) {
+      lastError = err;
+      if (started || !worthAnotherModel(err)) throw err;
+      console.error(`[chat] ${model} 不可用，改用下一个模型:`, err);
+    }
+  }
+
+  throw lastError ?? new Error("没有可用的对话模型");
+}
+
+async function* streamOnce(
   settings: AiSettings,
   system: string,
   messages: ChatMessage[],
