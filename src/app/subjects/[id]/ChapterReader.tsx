@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useLang, LangToggle } from "@/components/LangProvider";
 import { Lightbox } from "@/components/Lightbox";
 import { Markdown } from "@/components/Markdown";
+import { SourceViewer, type SourceRef } from "@/components/SourceViewer";
+import { RelatedQuestions, pickRelated, type ChapterQuestion } from "./RelatedQuestions";
 import type { ChapterOverviewContent, ChapterOverviewCitation } from "@/lib/ai/chapterOverview";
 
 type Entry = {
@@ -50,7 +52,7 @@ function buildReferences(overview: ChapterOverviewContent) {
 // Collapsed by default and laid out as wrapped page chips rather than one
 // full-width line per citation — repeating the same filename 13 times was
 // eating a third of the chapter.
-function References({ refs }: { refs: Reference[] }) {
+function References({ refs, onOpen }: { refs: Reference[]; onOpen: (r: Reference) => void }) {
   const byMaterial = new Map<string, { name: string; refs: Reference[] }>();
   for (const r of refs) {
     const entry = byMaterial.get(r.materialId) ?? { name: r.materialName, refs: [] };
@@ -74,13 +76,14 @@ function References({ refs }: { refs: Reference[] }) {
               {name}
             </Link>
             {list.map((r) => (
-              <span
+              <button
                 key={r.num}
                 id={`ref-${r.num}`}
-                className="rounded bg-neutral-900/[0.05] px-1.5 py-0.5 text-neutral-500 tabular-nums"
+                onClick={() => onOpen(r)}
+                className="rounded bg-neutral-900/[0.05] px-1.5 py-0.5 text-neutral-500 tabular-nums transition-colors hover:bg-neutral-900/[0.1] hover:text-neutral-800"
               >
                 [{r.num}] {r.sourcePage != null ? `p${r.sourcePage}` : "—"}
-              </span>
+              </button>
             ))}
           </div>
         ))}
@@ -155,14 +158,20 @@ export default function ChapterReader({
   initialOverview,
   initialGeneratedAt,
   entries,
+  questions = [],
 }: {
   chapterId: string | null;
   chapterName: string;
   initialOverview: ChapterOverviewContent | null;
   initialGeneratedAt: string | null;
   entries: Entry[];
+  /** This chapter's exercises, offered under the section each one bears on. */
+  questions?: ChapterQuestion[];
 }) {
   const { lang } = useLang();
+  // The citation the reader is looking at, shown as the original page rather
+  // than as this app's reading of it.
+  const [source, setSource] = useState<SourceRef | null>(null);
   const [overview, setOverview] = useState(initialOverview);
   const [generatedAt, setGeneratedAt] = useState(initialGeneratedAt);
   const [loading, setLoading] = useState(false);
@@ -172,6 +181,20 @@ export default function ChapterReader({
     () => (overview ? buildReferences(overview) : { refList: [], bulletRefs: new Map<string, number[]>() }),
     [overview]
   );
+  const refByNum = useMemo(() => new Map(refList.map((r) => [r.num, r as SourceRef])), [refList]);
+
+  // Matched per section on the section's own wording, so reading about
+  // variance offers the variance questions rather than the chapter's first
+  // three. Recomputed with the language, since the notes are what is matched.
+  const relatedBySection = useMemo(() => {
+    if (!overview || questions.length === 0) return [];
+    return overview.sections.map((section) =>
+      pickRelated(
+        [section.heading[lang], ...section.bullets.map((b) => b.text[lang])].join(" "),
+        questions
+      )
+    );
+  }, [overview, questions, lang]);
 
   async function generate() {
     if (!chapterId) return;
@@ -224,6 +247,8 @@ export default function ChapterReader({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
+      {source && <SourceViewer source={source} onClose={() => setSource(null)} />}
+
       {overview ? (
         <div className="flex max-w-[78ch] flex-col gap-7">
           {overview.sections.map((section, si) => (
@@ -251,13 +276,24 @@ export default function ChapterReader({
                       <div className="min-w-0">
                         <span data-quotable>
                           {(() => {
-                            const refs = nums.map((num) => (
-                              <sup key={num} className="ml-0.5">
-                                <a href={`#ref-${num}`} className="text-blue-600 hover:underline">
-                                  [{num}]
-                                </a>
-                              </sup>
-                            ));
+                            const refs = nums.map((num) => {
+                              const ref = refByNum.get(num);
+                              return (
+                                <sup key={num} className="ml-0.5">
+                                  <button
+                                    onClick={() => ref && setSource(ref)}
+                                    title={
+                                      ref
+                                        ? `${ref.materialName}${ref.sourcePage != null ? ` 第 ${ref.sourcePage} 页` : ""}`
+                                        : undefined
+                                    }
+                                    className="text-blue-600 transition-colors hover:text-blue-800 hover:underline"
+                                  >
+                                    [{num}]
+                                  </button>
+                                </sup>
+                              );
+                            });
                             return (
                               <>
                                 {parts.map((part: { type: "text" | "math"; value: string }, pi: number) =>
@@ -288,10 +324,14 @@ export default function ChapterReader({
                   );
                 })}
               </ul>
+
+              {relatedBySection[si]?.length > 0 && (
+                <RelatedQuestions questions={relatedBySection[si]} />
+              )}
             </section>
           ))}
 
-          {refList.length > 0 && <References refs={refList} />}
+          {refList.length > 0 && <References refs={refList} onOpen={setSource} />}
         </div>
       ) : (
         <div className="flex max-w-[78ch] flex-col gap-4">

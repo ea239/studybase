@@ -35,6 +35,35 @@ function parseFacts(raw: string | null | undefined): { label: string; value: str
   }
 }
 
+/** This chapter's exercises, flattened for the reading pane. */
+function chapterQuestions(chapterId: string | null, materials: Material[]) {
+  return materials.flatMap((material) =>
+    material.questions
+      .filter((q) => (q.chapterId ?? material.chapterId ?? null) === chapterId)
+      .map((q) => {
+        let options: string[] | null = null;
+        if (q.options) {
+          try {
+            const parsed = JSON.parse(q.options);
+            if (Array.isArray(parsed) && parsed.length) options = parsed.map(String);
+          } catch {
+            options = null;
+          }
+        }
+        return {
+          id: q.id,
+          stem: q.stem,
+          options,
+          answer: q.answer,
+          explanation: q.explanation,
+          difficulty: q.difficulty,
+          sourcePage: q.sourcePage,
+          materialName: material.filename,
+        };
+      })
+  );
+}
+
 function formatDue(e: {
   precision: string;
   startsAt: Date | null;
@@ -214,6 +243,7 @@ export default async function SubjectPage({
                   initialOverview={parseOverview(selectedGroup.chapter?.overview)}
                   initialGeneratedAt={selectedGroup.chapter?.overviewGeneratedAt?.toISOString() ?? null}
                   entries={selectedGroup.entries}
+                  questions={chapterQuestions(selectedGroup.chapter?.id ?? null, notesMaterials)}
                 />
               )
             ))}
