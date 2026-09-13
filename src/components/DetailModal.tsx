@@ -20,10 +20,13 @@ const subscribe = () => () => {};
 export function DetailModal({
   title,
   onClose,
+  actions,
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** Extra controls in the title bar, left of the close button. */
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [full, setFull] = useState(false);
@@ -81,13 +84,16 @@ export function DetailModal({
           <span className="min-w-0 flex-1 truncate text-center text-sm font-medium text-neutral-700">
             {title}
           </span>
-          <button
-            onClick={onClose}
-            aria-label="关闭"
-            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
-          >
-            ✕
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {actions}
+            <button
+              onClick={onClose}
+              aria-label="关闭"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">{children}</div>
       </div>

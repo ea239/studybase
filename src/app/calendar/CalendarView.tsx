@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { DetailModal } from "@/components/DetailModal";
+import { WorkDetail, type WorkDetailItem } from "@/app/subjects/[id]/WorkDetail";
 
 export type CalendarEvent = {
   id: string;
@@ -17,12 +19,10 @@ export type CalendarEvent = {
   completedAt: string | null;
 };
 
-// Dated work opens its brief; anything else (term boundaries, reading week)
-// has nothing to brief and goes to the document it came from.
+// Term boundaries and reading week have nothing to brief, so they go to the
+// document they came from. Dated work opens in place — see `open` below.
 function eventHref(e: CalendarEvent) {
-  return e.kind === "OTHER"
-    ? `/materials/${e.materialId}`
-    : `/subjects/${e.subjectId}?tab=work&item=${e.id}`;
+  return e.kind === "OTHER" ? `/materials/${e.materialId}` : null;
 }
 
 const KIND_LABEL: Record<CalendarEvent["kind"], string> = {
@@ -67,10 +67,63 @@ function formatDay(iso: string) {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
 }
 
+/** Opens work in place; sends anything without a brief to its document. */
+function EventLabel({
+  event,
+  className,
+  onOpen,
+}: {
+  event: CalendarEvent;
+  className: string;
+  onOpen: (e: CalendarEvent) => void;
+}) {
+  const href = eventHref(event);
+  if (href) {
+    return (
+      <Link href={href} title={`${event.subjectName} · ${event.title}`} className={className}>
+        {event.title}
+      </Link>
+    );
+  }
+  return (
+    <button
+      onClick={() => onOpen(event)}
+      title={`${event.subjectName} · ${event.title}`}
+      className={className}
+    >
+      {event.title}
+    </button>
+  );
+}
+
 export function CalendarView({ events }: { events: CalendarEvent[] }) {
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [subject, setSubject] = useState<string>("");
+  // Opened over the calendar rather than navigated to: checking what a piece
+  // of work asks for is a glance, and landing in a different view afterwards
+  // loses the month you were reading.
+  const [open, setOpen] = useState<CalendarEvent | null>(null);
+  const [detail, setDetail] = useState<WorkDetailItem | null>(null);
+
+  const openItem = (e: CalendarEvent) => {
+    setDetail(null);
+    setOpen(e);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch(`/api/events/${open.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d) setDetail(d);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const subjects = useMemo(() => {
     const seen = new Map<string, string>();
@@ -221,16 +274,14 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                 </div>
                 <div className="flex flex-col gap-1">
                   {dayEvents.map((e) => (
-                    <Link
+                    <EventLabel
                       key={e.id}
-                      href={eventHref(e)}
-                      title={`${e.subjectName} · ${e.title}`}
-                      className={`block truncate rounded-md px-1.5 py-0.5 text-[11px] leading-tight transition-opacity hover:opacity-75 ${
+                      event={e}
+                      onOpen={openItem}
+                      className={`block w-full truncate rounded-md px-1.5 py-0.5 text-left text-[11px] leading-tight transition-opacity hover:opacity-75 ${
                         KIND_TONE[e.kind]
                       } ${e.completedAt ? "line-through opacity-50" : ""}`}
-                    >
-                      {e.title}
-                    </Link>
+                    />
                   ))}
                 </div>
               </div>
@@ -255,12 +306,11 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                   <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] ${KIND_TONE[e.kind]}`}>
                     {KIND_LABEL[e.kind]}
                   </span>
-                  <Link
-                    href={eventHref(e)}
-                    className="min-w-0 flex-1 truncate text-neutral-800 transition-colors hover:text-blue-600"
-                  >
-                    {e.title}
-                  </Link>
+                  <EventLabel
+                    event={e}
+                    onOpen={openItem}
+                    className="min-w-0 flex-1 truncate text-left text-neutral-800 transition-colors hover:text-blue-600"
+                  />
                   <span className="shrink-0 text-xs text-neutral-400">{e.subjectName}</span>
                 </li>
               ))}
@@ -297,6 +347,27 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
           )}
         </div>
       </div>
+
+      {open && (
+        <DetailModal
+          title={detail?.title ?? open.title}
+          onClose={() => setOpen(null)}
+          actions={
+            <Link
+              href={`/subjects/${open.subjectId}?tab=work`}
+              className="rounded-lg px-2 py-1 text-xs text-neutral-500 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
+            >
+              查看全部作业
+            </Link>
+          }
+        >
+          {detail ? (
+            <WorkDetail subjectId={open.subjectId} item={detail} embedded />
+          ) : (
+            <p className="py-8 text-center text-sm text-neutral-400">加载中…</p>
+          )}
+        </DetailModal>
+      )}
     </div>
   );
 }
