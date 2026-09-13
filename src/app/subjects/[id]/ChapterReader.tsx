@@ -172,6 +172,10 @@ export default function ChapterReader({
   // The citation the reader is looking at, shown as the original page rather
   // than as this app's reading of it.
   const [source, setSource] = useState<SourceRef | null>(null);
+  // Learning reads the explanations; revising wants the same points as lines
+  // you can run your eye down. Same sections, same citations, same figures —
+  // only the density changes.
+  const [mode, setMode] = useState<"learn" | "notes">("learn");
   const [overview, setOverview] = useState(initialOverview);
   const [generatedAt, setGeneratedAt] = useState(initialGeneratedAt);
   const [loading, setLoading] = useState(false);
@@ -253,6 +257,30 @@ export default function ChapterReader({
             </button>
           )}
         </div>
+        {overview && (
+          <div className="mt-3 flex w-fit items-center rounded-lg bg-neutral-900/[0.05] p-0.5">
+            {(
+              [
+                ["learn", "学习"],
+                ["notes", "笔记"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                className={`rounded-md px-3 py-1 text-xs transition-colors ${
+                  mode === value
+                    ? "bg-white font-medium text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-900"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
@@ -265,10 +293,15 @@ export default function ChapterReader({
               <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900">
                 <Markdown inline>{section.heading[lang]}</Markdown>
               </h2>
-              <ul className="flex flex-col gap-2">
+              <ul className={`flex flex-col ${mode === "notes" ? "gap-1.5" : "gap-2"}`}>
                 {section.bullets.map((bullet, bi) => {
                   const nums = bulletRefs.get(`${si}:${bi}`) ?? [];
-                  const parts = splitDisplayMath(bullet.text[lang]);
+                  // Notes mode falls back to the explanation for chapters
+                  // written before briefs existed, so an old chapter degrades
+                  // to one dense mode rather than to blank bullets.
+                  const body =
+                    mode === "notes" ? (bullet.brief?.[lang] ?? bullet.text[lang]) : bullet.text[lang];
+                  const parts = splitDisplayMath(body);
                   const lastText = lastTextIndex(parts);
                   // A bullet that is nothing but a formula gets no marker: the
                   // panel is the point, and a dot beside an empty line reads
@@ -277,7 +310,9 @@ export default function ChapterReader({
                   return (
                     <li
                       key={bi}
-                      className={`flex gap-2.5 text-[15px] leading-[1.7] text-neutral-700 ${formulaOnly ? "mt-1" : ""}`}
+                      className={`flex gap-2.5 text-neutral-700 ${
+                        mode === "notes" ? "text-[14.5px] leading-[1.6]" : "text-[15px] leading-[1.7]"
+                      } ${formulaOnly ? "mt-1" : ""}`}
                     >
                       {!formulaOnly && (
                         <span aria-hidden className="mt-[9px] size-1 shrink-0 rounded-full bg-neutral-400" />

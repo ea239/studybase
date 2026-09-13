@@ -12,7 +12,17 @@ export type ChapterOverviewCitation = {
 export type Bilingual = { en: string; zh: string };
 
 export type NoteBullet = {
+  /** The explanation, for reading to learn from. */
   text: Bilingual;
+  /**
+   * The same point as one scannable line, for revising from.
+   *
+   * Written in the same call as `text`, not derived from it afterwards: two
+   * separate passes drift, and then the notes and the explanation disagree
+   * about what the chapter said. Absent on notes generated before this
+   * existed, which fall back to `text`.
+   */
+  brief?: Bilingual;
   sources: ChapterOverviewCitation[];
   // Set by the model when seeing the source slide genuinely helps — a diagram,
   // timing chart or layout. Absent on notes generated before this existed.
@@ -37,9 +47,16 @@ export type ChapterOverviewContent = {
 // from being thrown away over a shape the model simplified — the only loss is
 // that such a bullet carries no citations.
 const bulletSchema = z.union([
-  z.string().transform((text) => ({ text, sources: [] as number[], figure: false })),
+  z.string().transform((text) => ({ text, brief: text, sources: [] as number[], figure: false })),
   z.object({
     text: z.string(),
+    // Falls back to the explanation when the model omits it, so notes mode
+    // shows something rather than an empty bullet.
+    brief: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((v) => v ?? ""),
     sources: z
       .array(z.number().int())
       .nullable()
@@ -80,6 +97,7 @@ Structure:
 - 3-6 sections, in the order the material should be learned — earlier sections must not depend on later ones.
 - Each section: a short plain-language heading, then 3-7 bullets.
 - A bullet is one idea explained properly: one to three sentences, ordinary prose. Not a fragment, not a definition list entry, not telegraphic shorthand.
+- Every bullet ALSO needs a "brief": the same point compressed to one scannable line for revision — a definition, a contrast, a rule, a formula, under about 20 words, telegraphic. "X = Y", "X vs Y", "A → B" phrasing where it fits. It must say the same thing as the explanation, not a different or broader point, and it is what the student sees when revising instead of learning.
 - Do not open a bullet by restating its heading, and do not write "In this chapter…" or "It is important to note that…".
 - Use only what the source knowledge points contain. Do not invent facts, numbers or examples that are not supported by them. If the sources are thin on something, say less about it rather than filling the gap.
 - Write in English.
@@ -97,7 +115,7 @@ Each bullet also needs a "figure" boolean, which shows the original slide beside
 Aim for one or two figures in each section where the material is visual at all. Too few is the more common mistake — a spatial or procedural idea is much easier to follow beside the picture the lecturer drew — but a slide against every bullet is noise, and a slide that is only a bulleted list adds nothing.
 
 Return JSON matching this shape exactly:
-{ "sections": [{ "heading": string, "bullets": [{ "text": string, "sources": number[], "figure": boolean }] }] }`;
+{ "sections": [{ "heading": string, "bullets": [{ "text": string, "brief": string, "sources": number[], "figure": boolean }] }] }`;
 
 const TRANSLATE_PROMPT = `You translate study notes from English to Chinese.
 
@@ -185,7 +203,10 @@ export async function generateChapterOverview(
   const flat: string[] = [];
   for (const section of notes.sections) {
     flat.push(section.heading);
-    for (const b of section.bullets) flat.push(b.text);
+    for (const b of section.bullets) {
+      flat.push(b.text);
+      flat.push(b.brief || b.text);
+    }
   }
   const translated = await translateLines(settings, flat);
 
@@ -200,11 +221,12 @@ export async function generateChapterOverview(
     version: 2,
     sections: notes.sections.map((section) => {
       const heading = { en: section.heading, zh: translated[cursor++] };
-      const bullets = section.bullets.map((b) => ({
-        text: { en: b.text, zh: translated[cursor++] },
-        sources: resolve(b.sources),
-        figure: b.figure,
-      }));
+      const bullets = section.bullets.map((b) => {
+        const text = { en: b.text, zh: translated[cursor++] };
+        const briefEn = b.brief || b.text;
+        const brief = { en: briefEn, zh: translated[cursor++] };
+        return { text, brief, sources: resolve(b.sources), figure: b.figure };
+      });
       return { heading, bullets };
     }),
   };
