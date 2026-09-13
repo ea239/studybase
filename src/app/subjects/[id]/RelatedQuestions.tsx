@@ -40,28 +40,55 @@ function tokens(text: string): Set<string> {
 const MIN_SCORE = 3;
 
 /**
- * The exercises that actually bear on a section.
+ * Assigns each exercise to the one section it bears on most.
  *
- * Matching is on overlap between the section's own wording and the question,
- * scored and thresholded rather than ranked-and-truncated, so a section the
- * question bank does not cover gets no exercises rather than its three
- * least-bad ones.
+ * Scoring each section independently repeats the same question under every
+ * section it happens to match, which for a chapter with two questions means
+ * both appear six times — noise that makes the offer worth ignoring. A
+ * question belongs where it fits best, and nowhere else.
+ *
+ * Thresholded rather than ranked-and-truncated, so a section the question bank
+ * does not cover gets nothing rather than its least-bad match.
  */
-export function pickRelated(sectionText: string, questions: ChapterQuestion[], limit = 3) {
-  const want = tokens(sectionText);
-  if (want.size === 0) return [];
+export function assignRelated(
+  sectionTexts: string[],
+  questions: ChapterQuestion[],
+  perSection = 3
+): ChapterQuestion[][] {
+  const result: ChapterQuestion[][] = sectionTexts.map(() => []);
+  const sectionTokens = sectionTexts.map(tokens);
 
-  return questions
-    .map((q) => {
-      const have = tokens(`${q.stem} ${q.answer}`);
+  const scored = questions.map((q) => {
+    const have = tokens(`${q.stem} ${q.answer}`);
+    let best = -1;
+    let bestScore = 0;
+    sectionTokens.forEach((want, i) => {
       let score = 0;
       for (const t of want) if (have.has(t)) score++;
-      return { q, score };
-    })
-    .filter((x) => x.score >= MIN_SCORE)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((x) => x.q);
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    });
+    return { q, best, bestScore };
+  });
+
+  for (const { q, best, bestScore } of scored.sort((a, b) => b.bestScore - a.bestScore)) {
+    if (best < 0 || bestScore < MIN_SCORE) continue;
+    if (result[best].length < perSection) result[best].push(q);
+  }
+  return result;
+}
+
+// The chip shows one line of the stem, so LaTeX has to read as text there —
+// "$X$" typesets in the popup but is just noise at chip size.
+function plainStem(stem: string) {
+  return stem
+    .replace(/\$\$?([^$]+)\$\$?/g, "$1")
+    .replace(/\\[a-zA-Z]+\s*/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function QuestionBody({ question }: { question: ChapterQuestion }) {
@@ -132,13 +159,13 @@ export function RelatedQuestions({ questions }: { questions: ChapterQuestion[] }
         <button
           key={q.id}
           onClick={() => setOpen(q)}
-          title={q.stem}
+          title={plainStem(q.stem)}
           className="flex max-w-[26rem] items-center gap-1.5 rounded-full bg-neutral-900/[0.05] px-2.5 py-1 text-xs text-neutral-600 transition-colors hover:bg-neutral-900/[0.1] hover:text-neutral-900"
         >
           <span className="shrink-0 text-neutral-400">
             {DIFFICULTY_LABELS[q.difficulty] ?? q.difficulty}
           </span>
-          <span className="truncate">{q.stem}</span>
+          <span className="truncate">{plainStem(q.stem)}</span>
         </button>
       ))}
 

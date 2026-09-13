@@ -6,7 +6,7 @@ import { useLang, LangToggle } from "@/components/LangProvider";
 import { Lightbox } from "@/components/Lightbox";
 import { Markdown } from "@/components/Markdown";
 import { SourceViewer, type SourceRef } from "@/components/SourceViewer";
-import { RelatedQuestions, pickRelated, type ChapterQuestion } from "./RelatedQuestions";
+import { RelatedQuestions, assignRelated, type ChapterQuestion } from "./RelatedQuestions";
 import type { ChapterOverviewContent, ChapterOverviewCitation } from "@/lib/ai/chapterOverview";
 
 type Entry = {
@@ -185,16 +185,25 @@ export default function ChapterReader({
 
   // Matched per section on the section's own wording, so reading about
   // variance offers the variance questions rather than the chapter's first
-  // three. Recomputed with the language, since the notes are what is matched.
+  // three.
+  //
+  // Both languages are matched against, never just the displayed one: the
+  // questions are in whatever language the course wrote them, so matching
+  // Chinese notes against English questions finds nothing — which is what it
+  // did, silently, for every chapter while the toggle sat on 中文.
   const relatedBySection = useMemo(() => {
     if (!overview || questions.length === 0) return [];
-    return overview.sections.map((section) =>
-      pickRelated(
-        [section.heading[lang], ...section.bullets.map((b) => b.text[lang])].join(" "),
-        questions
-      )
+    return assignRelated(
+      overview.sections.map((section) =>
+        [
+          section.heading.en,
+          section.heading.zh,
+          ...section.bullets.flatMap((b) => [b.text.en, b.text.zh]),
+        ].join(" ")
+      ),
+      questions
     );
-  }, [overview, questions, lang]);
+  }, [overview, questions]);
 
   async function generate() {
     if (!chapterId) return;
@@ -287,7 +296,12 @@ export default function ChapterReader({
                                         ? `${ref.materialName}${ref.sourcePage != null ? ` 第 ${ref.sourcePage} 页` : ""}`
                                         : undefined
                                     }
-                                    className="text-blue-600 transition-colors hover:text-blue-800 hover:underline"
+                                    // Preflight gives sup/sub line-height 0.
+                                    // An inline anchor still paints inside a
+                                    // zero-height line box; an inline-block
+                                    // button collapses to nothing and cannot
+                                    // be clicked, so it needs its own.
+                                    className="align-baseline leading-none text-blue-600 transition-colors hover:text-blue-800 hover:underline"
                                   >
                                     [{num}]
                                   </button>
