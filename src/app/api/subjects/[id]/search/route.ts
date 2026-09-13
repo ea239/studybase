@@ -3,22 +3,24 @@ import { prisma } from "@/lib/db";
 import { getAiSettings } from "@/lib/ai/settings";
 import { chatTextStream } from "@/lib/ai/provider";
 import { pickModel } from "@/lib/ai/routing";
-import { searchSubject } from "@/lib/subjectSearch";
+import { courseCatalogue, searchSubject } from "@/lib/subjectSearch";
+import { expandQuery } from "@/lib/ai/queryExpansion";
 
 export const dynamic = "force-dynamic";
 
-const SYSTEM_PROMPT = `You answer a student's question about their own course, using only the course's own material.
+const SYSTEM_PROMPT = `You answer a student's question about their own course.
 
-You are given the course name, the question, and numbered excerpts retrieved from that course: extracted knowledge points, raw pages from the course documents, and the course's dated items.
+You are given the course name, the question, a catalogue of the course (its key facts, its chapters in order, and its assessed work and exams in date order), and numbered excerpts retrieved from the course documents.
 
-- Answer in Chinese, keeping the course's own terminology, proper nouns and quoted requirements in English as the sources write them.
-- Answer the question directly in the first sentence, then support it. Do not open by restating the question.
-- Cite the excerpt numbers you used, inline, as [1] or [2][3], right after the claim they support.
-- Quote exact figures, dates, weights and wording rather than paraphrasing them.
-- Use only what the excerpts say. If they do not answer the question, say so plainly and say what they do cover — do not fall back on how courses usually work.
-- Where excerpts disagree, say so and cite both.
-- Keep it short: a few sentences, or a handful of bullets when the answer is genuinely a list.
-- Write any formula as LaTeX between dollars.`;
+Answer in Chinese, keeping the course's own terminology, proper nouns and quoted requirements in English as the sources write them. Answer directly in the first sentence, then support it. Do not open by restating the question.
+
+Where the answer comes from decides how sure you may sound:
+- Stated in the catalogue or the excerpts — answer it, cite the excerpt numbers you used inline as [1] or [2][3], and quote exact dates, figures, weights and wording rather than paraphrasing them. The catalogue needs no citation.
+- Not stated, but the material supports working it out — do that, and say plainly what you inferred it from ("课程资料里没有直接写，但根据…"). Explaining a concept the chapters cover, connecting two things the material says, or reasoning from the syllabus all count.
+- The course material genuinely does not settle it — say so, say what the material does cover nearby, and stop. Never invent a date, a weight, a policy or a requirement: those are facts about this specific course, and a plausible guess is worse than an admission.
+- Not about this course at all — say it is outside the course material rather than answering from general knowledge.
+
+Where the excerpts disagree, say so and cite both. Keep it short: a few sentences, or a handful of bullets when the answer is genuinely a list. Write any formula as LaTeX between dollars.`;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,7 +35,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ]);
   if (!subject) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const hits = await searchSubject(id, query);
+  const catalogue = await courseCatalogue(id);
+  // Widened before searching: a Chinese question against English slides, or a
+  // reference like "第一项作业" against a course whose first assignment is
+  // called PD0, matches nothing on the question's own words.
+  const terms = settings ? await expandQuery(settings, query, catalogue) : [];
+  const hits = await searchSubject(id, query, terms);
 
   const encoder = new TextEncoder();
   // The sources are known before a word is generated, so they go out first as
@@ -50,24 +57,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })),
     }) + "\n";
 
-  if (hits.length === 0 || !settings) {
-    return new Response(
-      encoder.encode(
-        header +
-          (hits.length === 0
-            ? "这门课的资料里没有找到相关内容。"
-            : "还没有配置 AI 服务，上面是检索到的原始条目。")
-      ),
-      { headers: { "Content-Type": "text/plain; charset=utf-8" } }
-    );
+  // No longer short-circuits on zero hits: the catalogue alone answers most
+  // questions about the shape of the course, and turning those away with "没有
+  // 找到相关内容" was the single least useful thing this could do.
+  if (!settings) {
+    return new Response(encoder.encode(header + "还没有配置 AI 服务，上面是检索到的原始条目。"), {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
-  const user = `Course: ${subject.name}\nQuestion: ${query}\n\nExcerpts:\n${hits
-    .map(
-      (h, i) =>
-        `[${i + 1}] (${h.materialName}${h.sourcePage != null ? `, p.${h.sourcePage}` : ""})\n${h.text}`
-    )
-    .join("\n\n")}`;
+  const user = `Question: ${query}\n\n${catalogue}\n\nExcerpts from the course documents:\n${
+    hits.length
+      ? hits
+          .map(
+            (h, i) =>
+              `[${i + 1}] (${h.materialName}${h.sourcePage != null ? `, p.${h.sourcePage}` : ""})\n${h.text}`
+          )
+          .join("\n\n")
+      : "(nothing in the documents matched this question — answer from the catalogue above, or say what is missing)"
+  }`;
 
   const stream = new ReadableStream({
     async start(controller) {

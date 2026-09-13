@@ -66,8 +66,15 @@ function snippet(text: string, tokens: string[]) {
  * sentence in a document that no knowledge point happens to cover, and "when
  * is X due" by a date that lives in neither.
  */
-export async function searchSubject(subjectId: string, query: string, limit = 12): Promise<SearchHit[]> {
-  const tokens = tokenize(query);
+export async function searchSubject(
+  subjectId: string,
+  query: string,
+  extraTerms: string[] = [],
+  limit = 12
+): Promise<SearchHit[]> {
+  // The expanded terms carry the cross-language and resolved-reference work;
+  // the question's own words stay in so an exact phrase still wins.
+  const tokens = [...new Set([...tokenize(query), ...extraTerms.flatMap((t) => tokenize(t))])];
   if (tokens.length === 0) return [];
 
   const [points, pages, events] = await Promise.all([
@@ -146,4 +153,74 @@ export async function searchSubject(subjectId: string, query: string, limit = 12
   }
 
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+/**
+ * A compact description of what the course contains.
+ *
+ * Sent with every question, not just when something matched. Most of what a
+ * student asks a course is structural — when is the first assignment due, how
+ * many chapters are there, what is the final worth — and that is answered by
+ * knowing the shape of the course, which no amount of keyword matching against
+ * slide text reliably surfaces.
+ */
+export async function courseCatalogue(subjectId: string): Promise<string> {
+  const [subject, chapters, events] = await Promise.all([
+    prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true, facts: true } }),
+    prisma.chapter.findMany({
+      where: { subjectId },
+      orderBy: { order: "asc" },
+      select: { name: true, _count: { select: { knowledgePoints: true, questions: true } } },
+    }),
+    prisma.courseEvent.findMany({ where: { subjectId }, orderBy: [{ startsAt: "asc" }] }),
+  ]);
+  if (!subject) return "";
+
+  const lines: string[] = [`Course: ${subject.name}`];
+
+  try {
+    const parsed = subject.facts ? JSON.parse(subject.facts) : null;
+    if (parsed?.version === 1 && Array.isArray(parsed.facts) && parsed.facts.length) {
+      lines.push(
+        "Key facts:",
+        ...parsed.facts.map((f: { label: string; value: string }) => `- ${f.label}: ${f.value}`)
+      );
+    }
+  } catch {
+    // Facts in an older shape are simply left out.
+  }
+
+  if (chapters.length) {
+    lines.push(
+      "Chapters, in order:",
+      ...chapters.map((c, i) => `- ${i + 1}. ${c.name} (${c._count.knowledgePoints} points, ${c._count.questions} questions)`)
+    );
+  }
+
+  if (events.length) {
+    // Numbered in date order, because "the first assignment" is a position in
+    // this list and nothing in the documents says so.
+    const work = events.filter((e) => e.kind !== "OTHER");
+    const other = events.filter((e) => e.kind === "OTHER");
+    const describe = (e: (typeof events)[number]) => {
+      const when =
+        e.precision === "EXACT" && e.startsAt
+          ? e.startsAt.toISOString().slice(0, 16).replace("T", " ")
+          : e.startsAt && e.endsAt
+            ? `${e.startsAt.toISOString().slice(0, 10)} to ${e.endsAt.toISOString().slice(0, 10)} (window, not a fixed date)`
+            : (e.approxLabel ?? "date not announced");
+      return `${e.title} — ${e.kind} — ${when}${e.completedAt ? " — marked done" : ""}`;
+    };
+    if (work.length) {
+      lines.push(
+        "Assessed work and exams, in date order:",
+        ...work.map((e, i) => `- ${i + 1}. ${describe(e)}`)
+      );
+    }
+    if (other.length) {
+      lines.push("Other dates:", ...other.map((e) => `- ${describe(e)}`));
+    }
+  }
+
+  return lines.join("\n");
 }
