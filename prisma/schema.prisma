@@ -73,6 +73,14 @@ model Chapter {
 
   overview            String? // AI-generated study explanation, manually (re)generated from Settings
   overviewGeneratedAt DateTime?
+  /// Set while notes are being written, cleared when they are.
+  ///
+  /// Stored rather than held in the page's state: the work continues on the
+  /// server after the reader navigates away, and without this, coming back
+  /// showed "not generated yet" for something actively being generated. A
+  /// timestamp rather than a flag so a run killed mid-flight can be told from
+  /// one still going — see GENERATION_TIMEOUT_MS.
+  overviewStartedAt   DateTime?
 
   materials       Material[]
   knowledgePoints KnowledgePoint[]
@@ -261,6 +269,8 @@ model CourseEvent {
   /// stored rather than re-derived on every view.
   brief            String?
   briefGeneratedAt DateTime?
+  /// Set while the brief is being written; see Chapter.overviewStartedAt.
+  briefStartedAt   DateTime?
 
   createdAt DateTime @default(now())
 

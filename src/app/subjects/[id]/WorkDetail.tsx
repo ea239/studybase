@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Markdown } from "@/components/Markdown";
 import type { AssignmentBrief, BriefCitation } from "@/lib/ai/assignmentBrief";
@@ -15,6 +15,8 @@ export type WorkDetailItem = {
   completedAt: string | null;
   brief: AssignmentBrief | null;
   briefGeneratedAt: string | null;
+  /** A run already in flight when this was fetched. */
+  generating?: boolean;
 };
 
 function citationKey(c: BriefCitation) {
@@ -33,7 +35,7 @@ export function WorkDetail({
 }) {
   const [brief, setBrief] = useState(item.brief);
   const [generatedAt, setGeneratedAt] = useState(item.briefGeneratedAt);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(Boolean(item.generating));
   const [error, setError] = useState<string | null>(null);
   // Captured on mount rather than read while rendering, so the overdue mark
   // cannot flip under an unrelated re-render.
@@ -45,10 +47,35 @@ export function WorkDetail({
     item.startsAt != null &&
     new Date(item.startsAt).getTime() < now;
 
+  // Watches a run that is already going, whether this panel started it or
+  // found it in progress. setState lands in the interval callback, not in the
+  // effect body.
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/events/${item.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.generating) return;
+        if (data.brief) {
+          setBrief(data.brief);
+          setGeneratedAt(data.briefGeneratedAt);
+        }
+        setBusy(false);
+      } catch {
+        // A failed poll just retries.
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [busy, item.id]);
+
   async function generate() {
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/events/${item.id}/brief`, { method: "POST" });
+    // Already running elsewhere — leave `busy` set so the poll above finishes it.
+    if (res.status === 409) return;
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setError(data.error ?? "生成失败");
     else {
@@ -104,7 +131,12 @@ export function WorkDetail({
         >
           {busy ? "正在整理…" : brief ? "重新整理" : "整理这项作业"}
         </button>
-        {busy && <span className="text-xs text-neutral-400">正在翻阅课程资料…</span>}
+        {busy && (
+          <span className="flex items-center gap-1.5 text-xs text-neutral-500">
+            <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+            正在整理中…离开也不会中断，完成后自动出现。
+          </span>
+        )}
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
 
@@ -160,7 +192,9 @@ export function WorkDetail({
         </div>
       ) : (
         <p className="text-sm text-neutral-500">
-          还没有整理过。点上面的按钮，AI 会翻阅这门课的作业页面、评分标准和课程大纲，把要求、提交方式、评分和时间政策汇总到一起。
+          {busy
+          ? "正在翻阅这门课的作业页面、评分标准和课程大纲…"
+          : "还没有整理过。点上面的按钮，AI 会翻阅这门课的作业页面、评分标准和课程大纲，把要求、提交方式、评分和时间政策汇总到一起。"}
         </p>
       )}
     </div>

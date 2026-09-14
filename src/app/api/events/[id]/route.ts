@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { isGenerating } from "@/lib/generation";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     completedAt: event.completedAt?.toISOString() ?? null,
     brief,
     briefGeneratedAt: event.briefGeneratedAt?.toISOString() ?? null,
+    generating: isGenerating(event.briefStartedAt),
     subjectId: event.subject.id,
     subjectName: event.subject.name,
   });

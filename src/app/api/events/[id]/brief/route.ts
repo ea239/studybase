@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getAiSettings } from "@/lib/ai/settings";
 import { generateAssignmentBrief } from "@/lib/ai/assignmentBrief";
 import { gatherAssignmentContext } from "@/lib/assignments";
+import { isGenerating } from "@/lib/generation";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const event = await prisma.courseEvent.findUnique({ where: { id } });
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
 
+  if (isGenerating(event.briefStartedAt)) {
+    return NextResponse.json({ generating: true }, { status: 409 });
+  }
+
   const settings = await getAiSettings();
   if (!settings) return NextResponse.json({ error: "还没有配置 AI 服务" }, { status: 400 });
+
+  await prisma.courseEvent.update({ where: { id }, data: { briefStartedAt: new Date() } });
 
   try {
     const excerpts = await gatherAssignmentContext({
@@ -36,11 +43,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
     await prisma.courseEvent.update({
       where: { id },
-      data: { brief: JSON.stringify(brief), briefGeneratedAt: new Date() },
+      data: { brief: JSON.stringify(brief), briefGeneratedAt: new Date(), briefStartedAt: null },
     });
 
     return NextResponse.json({ brief, briefGeneratedAt: new Date().toISOString() });
   } catch (err) {
+    await prisma.courseEvent
+      .update({ where: { id }, data: { briefStartedAt: null } })
+      .catch(() => {});
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 }

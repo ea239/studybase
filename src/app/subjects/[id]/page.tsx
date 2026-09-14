@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { isGenerating } from "@/lib/generation";
 import { STRUCTURED_TAG_LABELS } from "@/lib/labels";
 import { Practice, type PracticeQuestion } from "./Practice";
 import { SubjectSearch } from "./SubjectSearch";
@@ -242,6 +243,7 @@ export default async function SubjectPage({
                   chapterName={selectedGroup.chapter?.name ?? "其他内容"}
                   initialOverview={parseOverview(selectedGroup.chapter?.overview)}
                   initialGeneratedAt={selectedGroup.chapter?.overviewGeneratedAt?.toISOString() ?? null}
+                  initialGenerating={isGenerating(selectedGroup.chapter?.overviewStartedAt)}
                   entries={selectedGroup.entries}
                   questions={chapterQuestions(selectedGroup.chapter?.id ?? null, notesMaterials)}
                 />
@@ -292,6 +294,7 @@ type Chapter = {
   order: number;
   overview: string | null;
   overviewGeneratedAt: Date | null;
+  overviewStartedAt: Date | null;
 };
 type KnowledgePoint = {
   id: string;

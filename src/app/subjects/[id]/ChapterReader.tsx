@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLang, LangToggle } from "@/components/LangProvider";
 import { Lightbox } from "@/components/Lightbox";
@@ -157,6 +157,7 @@ export default function ChapterReader({
   chapterName,
   initialOverview,
   initialGeneratedAt,
+  initialGenerating = false,
   entries,
   questions = [],
 }: {
@@ -164,6 +165,8 @@ export default function ChapterReader({
   chapterName: string;
   initialOverview: ChapterOverviewContent | null;
   initialGeneratedAt: string | null;
+  /** A run already in flight when the page was rendered. */
+  initialGenerating?: boolean;
   entries: Entry[];
   /** This chapter's exercises, offered under the section each one bears on. */
   questions?: ChapterQuestion[];
@@ -178,7 +181,7 @@ export default function ChapterReader({
   const [mode, setMode] = useState<"learn" | "notes">("learn");
   const [overview, setOverview] = useState(initialOverview);
   const [generatedAt, setGeneratedAt] = useState(initialGeneratedAt);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(initialGenerating);
   const [error, setError] = useState<string | null>(null);
 
   const { refList, bulletRefs } = useMemo(
@@ -209,19 +212,49 @@ export default function ChapterReader({
     );
   }, [overview, questions]);
 
+  // While a run is in flight — this page's or one started before it was opened
+  // — watch for it landing. setState happens in the interval callback, not in
+  // the effect body, so this subscribes rather than cascading renders.
+  useEffect(() => {
+    if (!loading || !chapterId) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/chapters/${chapterId}/overview`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.generating) return;
+        if (data.overview) {
+          setOverview(data.overview);
+          setGeneratedAt(data.overviewGeneratedAt);
+        }
+        setLoading(false);
+      } catch {
+        // A failed poll just means trying again in a few seconds.
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [loading, chapterId]);
+
   async function generate() {
     if (!chapterId) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/chapters/${chapterId}/overview`, { method: "POST" });
+      // Someone (or another tab) already has this running; the poll above
+      // picks up the result.
+      // Deliberately leaves `loading` set: a run is in flight, and the poll
+      // above is what ends it. Clearing it here would drop the watch and show
+      // "not generated" for something being generated.
+      if (res.status === 409) return;
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成失败");
       setOverview(data.overview);
       setGeneratedAt(data.overviewGeneratedAt);
+      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成失败");
-    } finally {
       setLoading(false);
     }
   }
@@ -390,13 +423,19 @@ export default function ChapterReader({
               <p className="text-xs leading-relaxed text-neutral-500">
                 生成后，下面这 {entries.length} 个知识点会被整理成分节的复习笔记，并附上中英双语——届时这里会出现语言切换按钮。
               </p>
-              <button
-                onClick={generate}
-                disabled={loading}
-                className="rounded-lg bg-neutral-900/90 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-900 disabled:opacity-40"
-              >
-                {loading ? "生成中…" : "生成本章笔记"}
-              </button>
+              {loading ? (
+                <p className="flex items-center gap-2 text-sm text-neutral-600">
+                  <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+                  正在生成中…完成后会自动出现，离开这个页面也不会中断。
+                </p>
+              ) : (
+                <button
+                  onClick={generate}
+                  className="rounded-lg bg-neutral-900/90 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-900"
+                >
+                  生成本章笔记
+                </button>
+              )}
             </div>
           )}
           <p className="text-xs text-neutral-400">以下是从资料里提取的原始知识点：</p>
