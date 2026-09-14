@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Markdown } from "@/components/Markdown";
+import { SourceViewer, type SourceRef } from "@/components/SourceViewer";
 import type { AssignmentBrief, BriefCitation } from "@/lib/ai/assignmentBrief";
 
 export type WorkDetailItem = {
@@ -40,6 +41,9 @@ export function WorkDetail({
   // Captured on mount rather than read while rendering, so the overdue mark
   // cannot flip under an unrelated re-render.
   const [now] = useState(() => Date.now());
+  // Following a citation opens the page it came from, as the course wrote it —
+  // the same as in the chapter notes.
+  const [source, setSource] = useState<SourceRef | null>(null);
 
   const overdue =
     !item.completedAt &&
@@ -103,6 +107,8 @@ export function WorkDetail({
 
   return (
     <div className={`flex flex-col gap-5 ${embedded ? "" : "max-w-[78ch]"}`}>
+      {source && <SourceViewer source={source} onClose={() => setSource(null)} />}
+
       <div className="flex flex-col gap-1">
         {!embedded && (
           <Link
@@ -157,13 +163,26 @@ export function WorkDetail({
                       <span data-quotable>
                         <Markdown inline>{bullet.text}</Markdown>
                         {[...new Set(bullet.sources.map((s) => refNumber.get(citationKey(s))!))].map(
-                          (num) => (
-                            <sup key={num} className="ml-0.5">
-                              <a href={`#wref-${num}`} className="text-blue-600 hover:underline">
-                                [{num}]
-                              </a>
-                            </sup>
-                          )
+                          (num) => {
+                            const ref = refs[num - 1];
+                            return (
+                              <sup key={num} className="ml-0.5">
+                                <button
+                                  onClick={() => ref && setSource(ref)}
+                                  title={
+                                    ref
+                                      ? `${ref.materialName}${ref.sourcePage != null ? ` 第 ${ref.sourcePage} 页` : ""}`
+                                      : undefined
+                                  }
+                                  // Preflight gives sup a line-height of 0, which
+                                  // collapses an inline-block button to nothing.
+                                  className="align-baseline leading-none text-blue-600 transition-colors hover:text-blue-800 hover:underline"
+                                >
+                                  [{num}]
+                                </button>
+                              </sup>
+                            );
+                          }
                         )}
                       </span>
                     </div>
@@ -180,10 +199,13 @@ export function WorkDetail({
                 {refs.map((ref, i) => (
                   <li key={i} id={`wref-${i + 1}`} className="text-xs text-neutral-500">
                     [{i + 1}]{" "}
-                    <Link href={`/materials/${ref.materialId}`} className="hover:text-blue-600 hover:underline">
+                    <button
+                      onClick={() => setSource(ref)}
+                      className="transition-colors hover:text-blue-600 hover:underline"
+                    >
                       {ref.materialName}
                       {ref.sourcePage != null ? ` 第 ${ref.sourcePage} 页` : ""}
-                    </Link>
+                    </button>
                   </li>
                 ))}
               </ol>

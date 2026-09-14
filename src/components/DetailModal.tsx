@@ -5,6 +5,11 @@ import { createPortal } from "react-dom";
 
 const subscribe = () => () => {};
 
+// Panels can stack — a citation opened from inside an assignment's brief puts
+// one over the other — and every one of them listens for Escape on the
+// document. Without knowing which is on top, one press closes the lot.
+const stack: symbol[] = [];
+
 /**
  * A panel that opens over the page and can be pushed out to fill it.
  *
@@ -36,9 +41,22 @@ export function DetailModal({
     () => false
   );
 
+  const [id] = useState(() => Symbol("modal"));
+
+  useEffect(() => {
+    stack.push(id);
+    return () => {
+      const at = stack.indexOf(id);
+      if (at >= 0) stack.splice(at, 1);
+    };
+  }, [id]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // Only the topmost panel closes, so dismissing a citation does not also
+      // dismiss the brief it was opened from.
+      if (stack[stack.length - 1] !== id) return;
       // Escape steps back out of fullscreen before it closes: it is the
       // undo for the last thing you did, not a straight exit.
       if (full) setFull(false);
@@ -46,7 +64,7 @@ export function DetailModal({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [full, onClose]);
+  }, [full, onClose, id]);
 
   if (!mounted) return null;
 
@@ -56,6 +74,8 @@ export function DetailModal({
       aria-modal
       aria-label={title}
       onClick={onClose}
+      // Later panels paint over earlier ones: they share a z-index, and DOM
+      // order settles it once they are siblings on the body.
       className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-stone-900/30 p-4 backdrop-blur-sm sm:p-8"
       style={{ animation: "modal-fade 0.18s ease-out" }}
     >
