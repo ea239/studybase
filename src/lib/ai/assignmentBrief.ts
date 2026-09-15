@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chatJSON } from "./provider";
-import { pickModel } from "./routing";
+import { modelChain } from "./routing";
 import type { AiSettings } from "./types";
 
 // Same citation shape as chapter notes: every claim points back at the page it
@@ -116,9 +116,9 @@ export async function generateAssignmentBrief(
     )
     .join("\n\n")}`;
 
-  const model = pickModel(settings, "content", user);
+  const models = modelChain(settings, "content", user);
   const run = async (system: string) =>
-    resolve(briefSchema.parse(await chatJSON({ ...settings, model }, system, user)), excerpts);
+    resolve(briefSchema.parse(await chatJSON(settings, system, user, models)), excerpts);
 
   let brief = await run(SYSTEM_PROMPT);
 

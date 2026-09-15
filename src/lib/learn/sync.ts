@@ -9,17 +9,12 @@ import {
   listTopics,
   type LearnTopic,
 } from "./client";
-import { isOfficeFile } from "@/lib/office";
+import type { MaterialType } from "@prisma/client";
+import { materialTypeOf } from "@/lib/fileTypes";
 
 // Everything else on LEARN (zip, mp4, sql, …) is skipped rather than imported
 // as a dead row.
-function fileTypeOf(name: string) {
-  const n = name.toLowerCase();
-  if (n.endsWith(".pdf")) return "PDF" as const;
-  if (n.endsWith(".html") || n.endsWith(".htm")) return "HTML" as const;
-  if (isOfficeFile(n)) return "OFFICE" as const;
-  return null;
-}
+const fileTypeOf = materialTypeOf;
 
 // LEARN's Url is the stored path, which carries the real extension — the
 // topic Title often doesn't ("Lecture 1" vs "01-overview.pdf").
@@ -150,7 +145,7 @@ async function importTopic(
   course: { id: string; orgUnitId: string; name: string; subjectId: string | null },
   topic: LearnTopic,
   filename: string,
-  fileType: "PDF" | "HTML" | "OFFICE",
+  fileType: MaterialType,
   existing: { id: string } | null,
   report: SyncReport
 ) {

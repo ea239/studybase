@@ -47,15 +47,42 @@ export function looksMathematical(text: string): boolean {
 export type ModelTask = "content" | "translate";
 
 /**
+ * The models answering should try, in order.
+ *
+ * The Q&A chain is the spine, since it is the list chosen for answering and
+ * the one metered separately. A question that needs working out puts the
+ * reasoning model at its head rather than replacing the chain — otherwise a
+ * reasoning model that has gone away takes answering with it.
+ */
+export function chatModelChain(settings: AiSettings, sample = ""): string[] {
+  const chain = settings.chatModels?.length ? settings.chatModels : [settings.model];
+  const reasoning = settings.reasoningModel?.trim();
+  if (reasoning && looksMathematical(sample)) return [...new Set([reasoning, ...chain])];
+  return [...new Set(chain)];
+}
+
+/**
  * The model id for a unit of work. `sample` is the text being worked on —
  * a question, a document, a chapter's points — and decides whether the
  * reasoning model is warranted.
  */
-export function pickModel(settings: AiSettings, task: ModelTask, sample = ""): string {
+/**
+ * The model for a unit of work, followed by what to try if it will not answer.
+ *
+ * A model can stop being available without warning — every DeepSeek text model
+ * this app had verified went region-locked between one week and the next — and
+ * when that happens to the specialised model, the work should land on the
+ * general one rather than failing. The fallback is always the configured main
+ * model, which is the one whose continued availability everything else already
+ * depends on.
+ */
+export function modelChain(settings: AiSettings, task: ModelTask, sample = ""): string[] {
+  const base = settings.model;
   if (task === "translate") {
-    return settings.translateModel?.trim() || settings.model;
+    const cheap = settings.translateModel?.trim();
+    return [...new Set([cheap || base, base])];
   }
   const reasoning = settings.reasoningModel?.trim();
-  if (reasoning && looksMathematical(sample)) return reasoning;
-  return settings.model;
+  if (reasoning && looksMathematical(sample)) return [...new Set([reasoning, base])];
+  return [base];
 }

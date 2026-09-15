@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
 import { enqueueProcessMaterial, settleOrphanedProcessing } from "@/lib/pipeline";
-import { isOfficeFile } from "@/lib/office";
+import { materialTypeOf } from "@/lib/fileTypes";
 
 export async function GET(req: NextRequest) {
   await settleOrphanedProcessing();
@@ -38,17 +38,10 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
-  const lowerName = file.name.toLowerCase();
-  const fileType = lowerName.endsWith(".pdf")
-    ? "PDF"
-    : lowerName.endsWith(".html") || lowerName.endsWith(".htm")
-      ? "HTML"
-      : isOfficeFile(lowerName)
-        ? "OFFICE"
-        : null;
+  const fileType = materialTypeOf(file.name);
   if (!fileType) {
     return NextResponse.json(
-      { error: "目前支持 PDF、HTML 网页，以及 PPT/Word 文档，其他格式将在后续阶段支持" },
+      { error: "支持 PDF、HTML 网页、PPT / Word 文档、纯文本（txt/md/csv）和图片（png/jpg 等），其他格式暂不支持" },
       { status: 400 }
     );
   }

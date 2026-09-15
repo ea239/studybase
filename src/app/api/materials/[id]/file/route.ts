@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { readUpload } from "@/lib/storage";
 import { officePdfBuffer } from "@/lib/office";
+import { imageMimeOf } from "@/lib/fileTypes";
 
 // Serves the original, unmodified file — this is the ground truth users can
 // always fall back to, separate from any AI-extracted content.
@@ -24,9 +25,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     headers: {
       "Content-Type": isHtml
         ? "text/html; charset=utf-8"
-        : material.fileType === "OFFICE" && wantsOriginal
-          ? "application/octet-stream"
-          : "application/pdf",
+        : material.fileType === "TEXT"
+          ? "text/plain; charset=utf-8"
+          : material.fileType === "IMAGE"
+            ? imageMimeOf(material.filename)
+            : material.fileType === "OFFICE" && wantsOriginal
+              ? "application/octet-stream"
+              : "application/pdf",
       "Content-Disposition": `inline; filename="${encodeURIComponent(material.filename)}"`,
       // Uploaded HTML is untrusted content — sandbox it so any embedded
       // script can't run in this app's origin when viewed inline.

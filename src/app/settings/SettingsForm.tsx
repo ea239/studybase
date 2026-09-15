@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AiProvider } from "@/lib/ai/types";
-import { usableOpencodeModels } from "@/lib/ai/models";
+import { usableOpencodeModels, visionOpencodeModels } from "@/lib/ai/models";
 import { DEFAULT_MODELS } from "@/lib/ai/types";
 import { copyText } from "@/lib/browser";
 
@@ -19,6 +19,7 @@ function ModelField({
   provider,
   placeholder,
   allowEmpty = false,
+  visionOnly = false,
 }: {
   label: string;
   value: string;
@@ -26,6 +27,8 @@ function ModelField({
   provider: AiProvider;
   placeholder?: string;
   allowEmpty?: boolean;
+  /** Restrict to models that can read images. */
+  visionOnly?: boolean;
 }) {
   if (provider !== "opencode") {
     return (
@@ -41,7 +44,7 @@ function ModelField({
     );
   }
 
-  const models = usableOpencodeModels();
+  const models = visionOnly ? visionOpencodeModels() : usableOpencodeModels();
   const families = [...new Set(models.map((m) => m.family))];
   // A saved id that has since been withdrawn would otherwise vanish from the
   // select and silently become whatever sits first in the list.
@@ -80,6 +83,7 @@ export function SettingsForm() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState(DEFAULT_MODELS.openai);
   const [chatModels, setChatModels] = useState<string[]>([]);
+  const [visionModel, setVisionModel] = useState("");
   const [reasoningModel, setReasoningModel] = useState("");
   const [translateModel, setTranslateModel] = useState("");
   const [saved, setSaved] = useState(false);
@@ -103,6 +107,7 @@ export function SettingsForm() {
           setBaseUrl(data.baseUrl ?? "");
           setModel(data.model ?? DEFAULT_MODELS[data.provider as AiProvider]);
           setChatModels(Array.isArray(data.chatModels) ? data.chatModels : []);
+          setVisionModel(data.visionModel ?? "");
           setReasoningModel(data.reasoningModel ?? "");
           setTranslateModel(data.translateModel ?? "");
         }
@@ -153,7 +158,7 @@ export function SettingsForm() {
     const res = await fetch("/api/settings/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey, baseUrl, model, chatModels, reasoningModel, translateModel }),
+      body: JSON.stringify({ provider, apiKey, baseUrl, model, chatModels, visionModel, reasoningModel, translateModel }),
     });
     if (res.ok) setSaved(true);
   }
@@ -238,6 +243,19 @@ export function SettingsForm() {
         </div>
         <p className="-mt-2 text-xs text-neutral-500">
           文章内问答优先用第一个；额度用尽或该模型不可用时，自动改用下一个。
+        </p>
+
+        <ModelField
+          label="识图模型（可选）"
+          value={visionModel}
+          onChange={setVisionModel}
+          provider={provider}
+          placeholder="不设置则无法解析图片"
+          allowEmpty
+          visionOnly
+        />
+        <p className="-mt-2 text-xs text-neutral-500">
+          上传图片（png / jpg 等）时用它读出文字、公式和图表说明。不设置的话图片会解析失败。
         </p>
 
         <ModelField

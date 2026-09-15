@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chatJSON } from "./provider";
-import { pickModel } from "./routing";
+import { modelChain } from "./routing";
 import type { AiSettings } from "./types";
 import type { ExtractedPage } from "@/lib/pdf";
 
@@ -335,7 +335,7 @@ export async function extractStructuredContent(
     // Routed on the document's own text: a derivation-heavy deck earns the
     // reasoning model, a syllabus does not.
     return extractionSchema.parse(
-      await chatJSON({ ...settings, model: pickModel(settings, "content", body) }, system, body)
+      await chatJSON(settings, system, body, modelChain(settings, "content", body))
     );
   }
 
@@ -351,7 +351,7 @@ export async function extractStructuredContent(
     // is worth far more partially extracted than not at all.
     try {
       const parsed = extractionSchema.parse(
-        await chatJSON({ ...settings, model: pickModel(settings, "content", user) }, system, user)
+        await chatJSON(settings, system, user, modelChain(settings, "content", user))
       );
       results.push(parsed);
       if (parsed.summary) summaries.push(parsed.summary);

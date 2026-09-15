@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
           ),
         ]
       : undefined,
+    visionModel: String(body.visionModel ?? "").trim() || undefined,
     reasoningModel: String(body.reasoningModel ?? "").trim() || undefined,
     translateModel: String(body.translateModel ?? "").trim() || undefined,
     baseUrl: provider === "opencode" ? OPENCODE_GO_BASE_URL : provider === "custom" ? String(body.baseUrl) : undefined,

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { officePdfRelativePath } from "@/lib/office";
+import { imageMimeOf } from "@/lib/fileTypes";
+import { readUpload } from "@/lib/storage";
 import { renderPdfPage } from "@/lib/pdf-images";
 
 export async function GET(
@@ -12,11 +14,22 @@ export async function GET(
 
   const material = await prisma.material.findUnique({
     where: { id },
-    select: { storagePath: true, fileType: true },
+    select: { storagePath: true, fileType: true, filename: true },
   });
   if (!material) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (material.fileType === "HTML") {
-    return NextResponse.json({ error: "only PDF pages can be rendered" }, { status: 400 });
+  if (material.fileType === "IMAGE") {
+    // The upload is the page. Nothing to render.
+    const bytes = await readUpload(material.storagePath);
+    return new NextResponse(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": imageMimeOf(material.filename),
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  }
+
+  if (material.fileType === "HTML" || material.fileType === "TEXT") {
+    return NextResponse.json({ error: "this material has no page image" }, { status: 400 });
   }
 
   // An Office document's figures come from the PDF it was converted to, which

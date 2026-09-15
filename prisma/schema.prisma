@@ -28,7 +28,11 @@ enum MaterialType {
   // outlines and lab sheets in these formats, and a dropped outline takes the
   // course's whole schedule with it.
   OFFICE
-  // IMAGE planned for a later phase
+  // Plain text: notes, transcripts, code, anything pasted into a .txt
+  TEXT
+  // A photo or screenshot — of a slide, a whiteboard, a worked solution.
+  // Read by a vision model, since there is no text to extract.
+  IMAGE
 }
 
 enum MaterialCategory {

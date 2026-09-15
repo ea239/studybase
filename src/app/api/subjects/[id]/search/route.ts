@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAiSettings } from "@/lib/ai/settings";
 import { chatTextStream } from "@/lib/ai/provider";
-import { pickModel } from "@/lib/ai/routing";
+import { chatModelChain } from "@/lib/ai/routing";
 import { courseCatalogue, searchSubject } from "@/lib/subjectSearch";
 import { expandQuery } from "@/lib/ai/queryExpansion";
 
@@ -82,9 +82,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         controller.enqueue(encoder.encode(header));
         const deltas = chatTextStream(
-          { ...settings, model: pickModel(settings, "content", `${query}\n${user.slice(0, 2000)}`) },
+          settings,
           SYSTEM_PROMPT,
-          [{ role: "user", content: user }]
+          [{ role: "user", content: user }],
+          undefined,
+          chatModelChain(settings, `${query}\n${user.slice(0, 2000)}`)
         );
         for await (const delta of deltas) controller.enqueue(encoder.encode(delta));
       } catch (err) {

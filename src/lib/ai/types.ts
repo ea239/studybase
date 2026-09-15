@@ -8,6 +8,11 @@ export interface AiSettings {
   baseUrl?: string;
   model: string;
   /**
+   * Model used to read uploaded images. Without one, images cannot be parsed
+   * — there is no text in them to extract by other means.
+   */
+  visionModel?: string;
+  /**
    * Models the in-article Q&A tries, in order.
    *
    * A subscription meters each model separately, so the one that runs dry

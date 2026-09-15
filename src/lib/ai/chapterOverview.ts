@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chatJSON } from "./provider";
-import { pickModel } from "./routing";
+import { modelChain } from "./routing";
 import type { AiSettings } from "./types";
 
 export type ChapterOverviewCitation = {
@@ -147,7 +147,7 @@ async function writeEnglishNotes(
     .map((p, i) => `${i + 1}. ${p.title}\n${p.content}`)
     .join("\n\n")}`;
   return notesSchema.parse(
-    await chatJSON({ ...settings, model: pickModel(settings, "content", user) }, NOTES_PROMPT, user)
+    await chatJSON(settings, NOTES_PROMPT, user, modelChain(settings, "content", user))
   );
 }
 
@@ -164,7 +164,7 @@ async function translateLines(settings: AiSettings, lines: string[]): Promise<st
     return lines.map((line, i) => parsed.lines[i] ?? line);
   };
 
-  const cheap = pickModel(settings, "translate");
+  const [cheap] = modelChain(settings, "translate");
   try {
     return await attempt(cheap);
   } catch (err) {

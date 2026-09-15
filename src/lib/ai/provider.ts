@@ -33,10 +33,32 @@ function batchBodyExtras(settings: AiSettings) {
 // Supports OpenAI, Anthropic, and any OpenAI-compatible custom endpoint —
 // this is the one place provider differences are handled, so extraction
 // logic elsewhere never needs to know which provider is active.
+/**
+ * Whether a failure is worth trying the next model for.
+ *
+ * Being out of quota, rate-limited or served by a provider having a moment are
+ * all "this model, right now" problems that another model can answer. A
+ * malformed request is not: it will fail identically on every model in the
+ * list, and cascading through them only makes the user wait longer for the
+ * same error.
+ */
+function worthAnotherModel(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (status === 429 || status === 402 || status === 403 || (status != null && status >= 500)) {
+    return true;
+  }
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return /quota|insufficient|rate limit|balance|unavailable|overloaded|capacity|not supported/.test(
+    message
+  );
+}
+
 export async function chatJSON(
   settings: AiSettings,
   system: string,
-  user: string
+  user: string,
+  /** Tried in order; defaults to the settings' own model. */
+  models?: string[]
 ): Promise<unknown> {
   const jsonInstruction =
     "Respond with ONLY a single valid JSON object. No markdown code fences, no commentary before or after.";
@@ -82,15 +104,29 @@ export async function chatJSON(
     {},
   ];
 
+  // Two nested fallbacks, for two different problems: the option layers shed
+  // what a model refuses to accept, and the model list moves on when a model
+  // will not answer at all.
+  const chain = models?.length ? models : [settings.model];
   let lastError: unknown;
-  for (const extras of attempts) {
-    try {
-      const resp = await client.chat.completions.create({ model: settings.model, messages, ...extras });
-      return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
-    } catch (err) {
-      lastError = err;
+
+  for (const model of chain) {
+    let refusedOutright = true;
+    for (const extras of attempts) {
+      try {
+        const resp = await client.chat.completions.create({ model, messages, ...extras });
+        return parseJsonLoose(resp.choices[0]?.message?.content ?? "{}");
+      } catch (err) {
+        lastError = err;
+        // A model that answered but gave unusable JSON is not unavailable, and
+        // moving on from it would hide a prompt problem behind a model swap.
+        if (!worthAnotherModel(err)) refusedOutright = false;
+      }
     }
+    if (!refusedOutright) break;
+    if (chain.length > 1) console.error(`[ai] ${model} 不可用，改用下一个模型:`, lastError);
   }
+
   throw lastError;
 }
 
@@ -152,33 +188,19 @@ export async function chatText(
 
 // Streaming variant of chatText — yields content deltas as they arrive so the
 // answer can render progressively instead of appearing all at once.
-/**
- * Whether a failure is worth trying the next model for.
- *
- * Being out of quota, rate-limited or served by a provider having a moment are
- * all "this model, right now" problems that another model can answer. A
- * malformed request is not: it will fail identically on every model in the
- * list, and cascading through them only makes the user wait longer for the
- * same error.
- */
-function worthAnotherModel(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  if (status === 429 || status === 402 || status === 403 || (status != null && status >= 500)) {
-    return true;
-  }
-  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return /quota|insufficient|rate limit|balance|unavailable|overloaded|capacity|not supported/.test(
-    message
-  );
-}
-
 export async function* chatTextStream(
   settings: AiSettings,
   system: string,
   messages: ChatMessage[],
-  sessionId?: string
+  sessionId?: string,
+  /** Tried in order; defaults to the configured Q&A chain. */
+  modelChain?: string[]
 ): AsyncGenerator<string> {
-  const models = settings.chatModels?.length ? settings.chatModels : [settings.model];
+  const models = modelChain?.length
+    ? modelChain
+    : settings.chatModels?.length
+      ? settings.chatModels
+      : [settings.model];
   let lastError: unknown;
 
   for (const model of models) {

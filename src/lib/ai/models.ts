@@ -3,6 +3,9 @@
 // the plan's display names differ from them, so they are recorded separately
 // rather than derived.
 //
+// Availability changes under us: every DeepSeek text model was reachable on
+// 2026-09-12 and region-locked by 2026-09-15. Re-probe before trusting this.
+//
 // `verified` records that the model answered a real request from this app:
 // the catalogue is a published plan, not a promise that every entry works for
 // every account, and a model that 4xxs is worse than one that isn't offered.
@@ -10,6 +13,8 @@ export type OpencodeModel = {
   id: string;
   label: string;
   family: string;
+  /** Can read images. Only these are offered for parsing uploaded pictures. */
+  vision?: boolean;
   /** Monthly allowance the plan lists for this model. */
   included: string;
   verified: boolean;
@@ -47,10 +52,10 @@ export const OPENCODE_MODELS: OpencodeModel[] = [
   { id: "qwen3.7-plus", label: "Qwen3.7 Plus", family: "Alibaba", included: "$60", verified: true },
   { id: "qwen3.6-plus", label: "Qwen3.6 Plus", family: "Alibaba", included: "$60", verified: true },
 
-  { id: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", family: "DeepSeek", included: "$15", verified: true },
+  { id: "deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", family: "DeepSeek", included: "$15", verified: false, note: "2026-09-15 起同样受中国境内托管限制，需在 opencode 后台 opt in" },
   { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", family: "DeepSeek", included: "$15", verified: false, note: "最新版本仅在中国境内托管，需在 opencode 后台显式 opt in" },
   { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", family: "DeepSeek", included: "$30", verified: false, note: "最新版本仅在中国境内托管，需在 opencode 后台显式 opt in" },
-  { id: "deepseek-v4-flash-vision-exp", label: "DeepSeek V4 Flash Vision Exp", family: "DeepSeek", included: "$15", verified: true },
+  { id: "deepseek-v4-flash-vision-exp", label: "DeepSeek V4 Flash Vision Exp", family: "DeepSeek", included: "$15", verified: true, vision: true },
 
   { id: "hy4-preview", label: "Hy4 preview", family: "Tencent Hunyuan", included: "$30", verified: true },
   { id: "hy3", label: "Hy3", family: "Tencent Hunyuan", included: "$60", verified: true },
@@ -63,4 +68,9 @@ export function opencodeModel(id: string) {
 /** Offered in the settings dropdowns: only what this app has actually reached. */
 export function usableOpencodeModels() {
   return OPENCODE_MODELS.filter((m) => m.verified);
+}
+
+/** Models that can read an image, for parsing uploaded pictures. */
+export function visionOpencodeModels() {
+  return OPENCODE_MODELS.filter((m) => m.verified && m.vision);
 }

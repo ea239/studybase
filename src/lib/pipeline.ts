@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db";
 import { readUpload } from "@/lib/storage";
 import { officePdfBuffer } from "@/lib/office";
+import { extractTextPages } from "@/lib/text";
+import { transcribeImage } from "@/lib/ai/vision";
+import { imageMimeOf } from "@/lib/fileTypes";
 import { extractPdfPages } from "@/lib/pdf";
 import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
@@ -277,20 +280,44 @@ export async function processMaterial(materialId: string) {
 
   try {
     const material = await prisma.material.findUniqueOrThrow({ where: { id: materialId } });
-    // Office documents are converted to PDF first; everything after this point
-    // only ever sees PDF or HTML.
-    const fileBuffer =
-      material.fileType === "OFFICE"
-        ? await officePdfBuffer(material.id, material.storagePath)
-        : await readUpload(material.storagePath);
-    const pages =
-      material.fileType === "HTML" ? await extractHtmlPages(fileBuffer) : await extractPdfPages(fileBuffer);
+
+    // Read before extraction, not after: an image has no text to extract
+    // without a model to read it, so for that one input the settings are a
+    // precondition rather than something needed later.
+    const aiSettings = await getAiSettings();
+    if (material.fileType === "IMAGE" && !aiSettings?.visionModel?.trim()) {
+      throw new Error("还没有配置识图模型，无法解析图片。请在设置页选择一个识图模型。");
+    }
+
+    // Each input becomes pages of text here, and nothing after this point
+    // needs to know which kind of file it started as.
+    let pages;
+    if (material.fileType === "IMAGE") {
+      const image = await readUpload(material.storagePath);
+      const transcript = await transcribeImage(aiSettings!, image, imageMimeOf(material.filename));
+      pages = [{ pageNumber: 1, text: transcript }];
+    } else if (material.fileType === "TEXT") {
+      pages = extractTextPages(await readUpload(material.storagePath));
+    } else if (material.fileType === "HTML") {
+      pages = await extractHtmlPages(await readUpload(material.storagePath));
+    } else {
+      // PDF, or an Office document converted to one.
+      const pdf =
+        material.fileType === "OFFICE"
+          ? await officePdfBuffer(material.id, material.storagePath)
+          : await readUpload(material.storagePath);
+      pages = await extractPdfPages(pdf);
+    }
 
     if (pages.length === 0) {
       throw new Error(
         material.fileType === "HTML"
           ? "未能从该网页中提取到任何文本"
-          : "未能从 PDF 中提取到任何文本（可能是扫描件，需要 OCR，暂不支持）"
+          : material.fileType === "TEXT"
+            ? "这个文本文件是空的"
+            : material.fileType === "IMAGE"
+              ? "识图模型没有从这张图片里读到内容"
+              : "未能从 PDF 中提取到任何文本（可能是扫描件，试试改用图片上传，会走识图模型）"
       );
     }
 
@@ -305,7 +332,6 @@ export async function processMaterial(materialId: string) {
       })),
     });
 
-    const aiSettings = await getAiSettings();
     if (!aiSettings || !aiSettings.apiKey || !aiSettings.model) {
       await prisma.material.update({
         where: { id: materialId },
