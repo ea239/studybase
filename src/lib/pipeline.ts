@@ -9,7 +9,7 @@ import { extractHtmlPages } from "@/lib/html";
 import { extractStructuredContent } from "@/lib/ai/extract";
 import { getAiSettings } from "@/lib/ai/settings";
 import type { AiSettings } from "@/lib/ai/types";
-import { resolveChapter } from "@/lib/chapter-resolver";
+import { normaliseChapterNames, resolveChapter } from "@/lib/chapter-resolver";
 import { generateChapterOverview } from "@/lib/ai/chapterOverview";
 import { extractCourseEvents } from "@/lib/ai/courseEvents";
 import { extractCourseFacts } from "@/lib/ai/courseFacts";
@@ -63,6 +63,7 @@ export function enqueueProcessMaterial(materialId: string) {
     if (inFlight === 0) {
       try {
         await pruneEmptyChapters();
+        await tidyChapterNames();
         await flushChapterNotes();
       } catch (err) {
         console.error("[pipeline] 章节收尾失败:", err);
@@ -200,6 +201,26 @@ async function pruneEmptyChapters() {
     },
   });
   if (count) console.log(`[pipeline] 清理了 ${count} 个空章节`);
+}
+
+/**
+ * Settles chapter names once a batch has landed.
+ *
+ * Deliberately here rather than at creation: the name a chapter gets first is
+ * often provisional — taken from a filename before anything had read the
+ * slides — and only once the batch is in is there enough of the course to tell
+ * what it calls its units.
+ */
+async function tidyChapterNames() {
+  const subjects = await prisma.subject.findMany({ select: { id: true, name: true } });
+  for (const subject of subjects) {
+    try {
+      const changed = await normaliseChapterNames(subject.id);
+      if (changed) console.log(`[chapters] ${subject.name}: 统一了 ${changed} 个章节名`);
+    } catch (err) {
+      console.error(`[chapters] ${subject.name} 章节名统一失败:`, err);
+    }
+  }
 }
 
 // Chapter notes are written automatically after new material lands, so the

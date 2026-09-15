@@ -156,3 +156,129 @@ export async function resolveChapter(
   cache.set(cacheKey, created.id);
   return created.id;
 }
+
+
+// Words a course actually calls its teaching units. A chapter labelled with
+// one of these is reporting the course's own vocabulary and is left alone.
+const STRONG_UNIT_WORDS = ["chapter", "lecture", "unit", "module", "week", "topic", "discussion"];
+
+// Words that get attached to a chapter because they were in a filename, not
+// because the course uses them. "part02 - Relational Model" is a file called
+// part02; the slides inside call it Chapter 2.
+const WEAK_UNIT_WORDS = ["part", "section", "doc", "file", "slides", "deck", "notes", "no", "pt"];
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+};
+
+type ParsedName = { word: string; number: number; title: string } | null;
+
+/** Splits a chapter name into its unit word, number and title. */
+export function parseChapterName(name: string): ParsedName {
+  const words = [...STRONG_UNIT_WORDS, ...WEAK_UNIT_WORDS].join("|");
+  const digits = `\\d{1,3}`;
+  const spelled = Object.keys(NUMBER_WORDS).join("|");
+  const pattern = new RegExp(
+    `^\\s*(${words})\\s*[_\\-.:：]?\\s*(${digits}|${spelled})\\b[\\s_\\-–—:：]*(.*)$`,
+    "i"
+  );
+  const match = name.trim().match(pattern);
+  if (!match) return null;
+
+  const [, word, rawNumber, rest] = match;
+  const number = /^\d+$/.test(rawNumber)
+    ? parseInt(rawNumber, 10)
+    : NUMBER_WORDS[rawNumber.toLowerCase()];
+  if (number == null || Number.isNaN(number)) return null;
+
+  return { word: word.toLowerCase(), number, title: rest.trim() };
+}
+
+function titleCase(word: string) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function formatChapterName(word: string, number: number, title: string) {
+  const head = `${titleCase(word)} ${number}`;
+  return title ? `${head}: ${title}` : head;
+}
+
+/**
+ * Makes a subject's chapter names consistent with each other.
+ *
+ * Two things go wrong on their own. A name can be formatted differently from
+ * its neighbours — "Chapter 2 Application Layer" beside "Chapter 3: Transport
+ * Layer", or "Module One" beside "Module 2" — which is cosmetic but makes a
+ * list look unsorted. And a name can use a word the course does not: a chapter
+ * called "part02 - …" was named from a filename before the slides were read,
+ * while the course itself says Chapter.
+ *
+ * Only filename-ish words are replaced. A course that genuinely uses two
+ * vocabularies — EARTH 121 has both Modules and Discussions, which are
+ * different things — keeps both, because unifying them would collide
+ * Discussion 2 with Module 2 and merge two unrelated chapters.
+ *
+ * Runs after content lands rather than at creation, since the first name a
+ * chapter gets is often the provisional one.
+ */
+export async function normaliseChapterNames(subjectId: string): Promise<number> {
+  const chapters = await prisma.chapter.findMany({
+    where: { subjectId },
+    select: { id: true, name: true },
+  });
+  if (chapters.length < 2) return 0;
+
+  const parsed = chapters.map((c) => ({ ...c, parts: parseChapterName(c.name) }));
+
+  // The course's own word: the most common strong one it uses.
+  const counts = new Map<string, number>();
+  for (const c of parsed) {
+    if (c.parts && STRONG_UNIT_WORDS.includes(c.parts.word)) {
+      counts.set(c.parts.word, (counts.get(c.parts.word) ?? 0) + 1);
+    }
+  }
+  const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  // Ordering is grouped by unit word, then by number. A course using two
+  // vocabularies (Modules and Discussions) otherwise interleaves them, since
+  // both start at 1 — Module 1 landing between Discussion 2 and Discussion 3
+  // reads as a list that failed to sort. The course's own word leads.
+  const wordRank = new Map<string, number>();
+  if (dominant) wordRank.set(dominant, 0);
+  for (const c of parsed) {
+    if (!c.parts) continue;
+    const word = WEAK_UNIT_WORDS.includes(c.parts.word) && dominant ? dominant : c.parts.word;
+    if (!wordRank.has(word)) wordRank.set(word, wordRank.size);
+  }
+
+  const taken = new Set(chapters.map((c) => c.name));
+  let changed = 0;
+
+  for (const chapter of parsed) {
+    if (!chapter.parts) continue;
+    const { word, number, title } = chapter.parts;
+    const useWord = WEAK_UNIT_WORDS.includes(word) && dominant ? dominant : word;
+    const next = formatChapterName(useWord, number, title);
+    const order = (wordRank.get(useWord) ?? 0) * 1000 + number;
+    if (next === chapter.name) {
+      await prisma.chapter.update({ where: { id: chapter.id }, data: { order } });
+      continue;
+    }
+
+    // Renaming onto an existing name would violate the unique constraint, and
+    // silently merging two chapters is far worse than an inconsistent name.
+    if (taken.has(next)) {
+      console.error(`[chapters] 跳过重命名 "${chapter.name}" → "${next}"：该名称已被占用`);
+      continue;
+    }
+
+    await prisma.chapter.update({ where: { id: chapter.id }, data: { name: next, order } });
+    taken.delete(chapter.name);
+    taken.add(next);
+    changed++;
+  }
+
+  return changed;
+}
