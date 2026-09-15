@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { NavTabs } from "@/components/NavTabs";
+import { TaskDock } from "@/components/TaskDock";
 import { SESSION_COOKIE, readSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -48,6 +49,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+        {/* Fixed to the viewport, so it reports work in progress from wherever
+            you happen to be. */}
+        <TaskDock />
       </body>
     </html>
   );
