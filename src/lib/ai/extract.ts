@@ -257,6 +257,14 @@ Given the raw text of a document, page by page, extract:
 
 For every knowledge point and question, also determine which chapter/unit/week it belongs to, using the actual titles, headers, or running headers that appear in the source text itself (e.g. a title slide reading "Chapter 3: Query Optimization", a running header, a slide footer showing a unit number, "第三章", "Week 5", "Unit 2"). Put this in a "chapter" field, using the chapter number and title as it literally appears in the source (e.g. "Chapter 3: Query Optimization").
 
+The filename is given above the text when there is one, and it often carries the unit number the slides omit: "part01 - Relational Model" is Part 01, "Chapter_3_Transport" is Chapter 3, "Week 5 notes" is Week 5. Use it when the text itself gives no number.
+
+Some things are never a chapter, whatever else is missing:
+- The course code, course name, department or university — "ECE 356", "University of Waterloo" appear on every slide of every deck because they are the running header, so they identify nothing.
+- The instructor's name, or an acknowledgement of where the slides came from.
+- A tutorial, lab, setup guide, assignment sheet or administrative document. That is not lecture content, and it belongs to no chapter — leave "chapter" null for it rather than inventing a chapter out of its title.
+If after all of that you still cannot tell which unit something belongs to, leave "chapter" null. A wrong chapter scatters the course; a null one just leaves the item unfiled.
+
 A chapter is a teaching unit — a lecture, chapter or week — not a section heading within one. A slide titled "Variance" inside "Lecture 4: Probability Review II" belongs to chapter "Lecture 4: Probability Review II"; it is not its own chapter, and not "Lecture 4: Probability Review II - Variance" either. Whenever two items belong to the same unit, give the chapter string identically both times, so they group together.
 
 How many chapters a document covers depends on the document. A lecture deck is one unit, so every item in it takes the same chapter. A question bank, review sheet or exam paper is usually organised by chapter and covers many, so each item takes the chapter of the section it sits under — do not collapse those onto a single chapter. Prefer the unit's own number and title ("Chapter 3: Transport Layer") over a heading that merely repeats the course code ("ECE 358: Transport Layer"), when both appear.
@@ -322,16 +330,26 @@ const SYSTEM_PROMPTS = {
 export async function extractStructuredContent(
   settings: AiSettings,
   pages: ExtractedPage[],
-  category: keyof typeof SYSTEM_PROMPTS = "NOTES"
+  category: keyof typeof SYSTEM_PROMPTS = "NOTES",
+  /**
+   * The document's own name, given to the model as context.
+   *
+   * Courses number their units in the filename far more reliably than on the
+   * slides: a deck called "part01 - Relational Model" carries no unit number
+   * anywhere in its text, so a model shown only the text has nothing to go on
+   * and reaches for the running header, which is the course code.
+   */
+  filename?: string
 ): Promise<ExtractionResult> {
   const system = SYSTEM_PROMPTS[category];
   const total = pages.reduce((sum, p) => sum + pageBlock(p).length, 0);
+  const header = filename ? `Document filename: ${filename}\n\n` : "";
 
   // Most course files are a single lecture and fit comfortably. Keep them on
   // the original one-request path: no outline call, no merging, nothing new to
   // go wrong for the common case.
   if (total <= CHUNK_CHARS) {
-    const body = joinPages(pages);
+    const body = header + joinPages(pages);
     // Routed on the document's own text: a derivation-heavy deck earns the
     // reasoning model, a syllabus does not.
     return extractionSchema.parse(
@@ -346,7 +364,7 @@ export async function extractStructuredContent(
   const results: ExtractionResult[] = [];
   const summaries: string[] = [];
   for (const [index, chunk] of chunks.entries()) {
-    const user = buildChunkPrompt(chunk, allTitles, index, chunks.length);
+    const user = header + buildChunkPrompt(chunk, allTitles, index, chunks.length);
     // One failed part should cost that part, not the document: a 44-page bank
     // is worth far more partially extracted than not at all.
     try {

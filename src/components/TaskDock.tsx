@@ -28,18 +28,18 @@ const SHAPE_KEY = "studybase.taskdock.shape";
 type Shape = "banner" | "expanded" | "minimised";
 
 function Ring({ done, total }: { done: number; total: number }) {
-  const r = 15;
+  const r = 15.5;
   const circumference = 2 * Math.PI * r;
   const fraction = total > 0 ? done / total : 0;
   return (
     <svg viewBox="0 0 36 36" className="absolute inset-0 size-full -rotate-90">
-      <circle cx="18" cy="18" r={r} fill="none" strokeWidth="2.5" className="stroke-neutral-900/10" />
+      <circle cx="18" cy="18" r={r} fill="none" strokeWidth="3" className="stroke-neutral-900/10" />
       <circle
         cx="18"
         cy="18"
         r={r}
         fill="none"
-        strokeWidth="2.5"
+        strokeWidth="3"
         strokeLinecap="round"
         className="stroke-neutral-900/70 transition-[stroke-dashoffset] duration-500"
         strokeDasharray={circumference}
@@ -150,34 +150,34 @@ export function TaskDock() {
     <>
       {/* Fixed to the viewport and above everything but a modal, so it reads as
           one persistent thing rather than part of whichever page is open. */}
-      <div className="fixed right-4 bottom-4 z-[70] flex flex-col items-end gap-2">
+      <div className="fixed right-6 bottom-6 z-[70] flex flex-col items-end gap-2">
         {shape === "minimised" ? (
           <button
             onClick={() => changeShape("banner")}
             onContextMenu={onContextMenu}
             title={`还有 ${remaining} 项任务 · ${running.title}`}
             aria-label={`还有 ${remaining} 项任务，点击展开`}
-            className="surface surface-interactive relative flex size-11 items-center justify-center rounded-full"
+            className="surface surface-interactive relative flex size-14 items-center justify-center rounded-full"
           >
             <Ring done={done} total={peak} />
-            <span className="relative text-sm font-medium tabular-nums text-neutral-800">
+            <span className="relative text-base font-medium tabular-nums text-neutral-800">
               {remaining}
             </span>
           </button>
         ) : (
           <div
             onContextMenu={onContextMenu}
-            className="surface animate-fade-up flex w-[21rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl"
+            className="surface animate-fade-up flex w-[25rem] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-2xl"
           >
-            <div className="flex items-center gap-2 px-3 py-2">
-              <span className="relative flex size-4 shrink-0 items-center justify-center">
-                <span className="absolute size-2 animate-ping rounded-full bg-amber-500/60" />
-                <span className="size-1.5 rounded-full bg-amber-500" />
+            <div className="flex items-center gap-2.5 px-4 py-3">
+              <span className="relative flex size-5 shrink-0 items-center justify-center">
+                <span className="absolute size-2.5 animate-ping rounded-full bg-amber-500/60" />
+                <span className="size-2 rounded-full bg-amber-500" />
               </span>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs text-neutral-800">{running.title}</p>
-                <p className="truncate text-[11px] text-neutral-400">
+                <p className="truncate text-[13px] text-neutral-800">{running.title}</p>
+                <p className="mt-0.5 truncate text-[11.5px] text-neutral-400">
                   {KIND_LABEL[running.kind]}
                   {running.subject && ` · ${running.subject}`}
                   {remaining > 1 && ` · 队列中还有 ${remaining - 1} 项`}
@@ -188,7 +188,7 @@ export function TaskDock() {
                 onClick={() => changeShape(shape === "expanded" ? "banner" : "expanded")}
                 aria-label={shape === "expanded" ? "收起队列" : "展开队列"}
                 aria-expanded={shape === "expanded"}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
               >
                 <svg
                   viewBox="0 0 16 16"
@@ -208,29 +208,29 @@ export function TaskDock() {
               <button
                 onClick={() => changeShape("minimised")}
                 aria-label="最小化"
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-900/[0.06] hover:text-neutral-900"
               >
                 ✕
               </button>
             </div>
 
             {shape === "expanded" && (
-              <ul className="max-h-[17rem] overflow-y-auto border-t border-neutral-900/[0.07]">
+              <ul className="max-h-[21rem] overflow-y-auto border-t border-neutral-900/[0.07]">
                 {tasks.map((task) => (
                   <li key={task.id} className="border-b border-neutral-900/[0.04] last:border-b-0">
                     <Link
                       href={task.href ?? "#"}
-                      className="flex items-center gap-2 px-3 py-2 transition-colors hover:bg-neutral-900/[0.03]"
+                      className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-neutral-900/[0.03]"
                     >
                       <span
-                        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${KIND_TONE[task.kind]}`}
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${KIND_TONE[task.kind]}`}
                       >
                         {KIND_LABEL[task.kind]}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-xs text-neutral-700">
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-700">
                         {task.title}
                       </span>
-                      <span className="shrink-0 text-[11px] text-neutral-400">
+                      <span className="shrink-0 text-[11.5px] text-neutral-400">
                         {task.state === "running" ? "进行中" : "等待"}
                       </span>
                     </Link>

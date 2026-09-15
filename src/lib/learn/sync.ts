@@ -27,7 +27,9 @@ function filenameOf(topic: LearnTopic) {
 // using the module the file sits in — LEARN课程基本都按这个分目录.
 function categoryOf(topic: LearnTopic) {
   const hay = [...topic.modulePath, topic.title].join(" ").toLowerCase();
-  if (/\blab\b|assignment|homework|project/.test(hay)) return "LAB" as const;
+  // Tutorials and setup guides describe a procedure to follow rather than
+  // teaching a topic, which is what the LAB prompt is written for.
+  if (/\blab\b|assignment|homework|project|tutorial|setup|walkthrough/.test(hay)) return "LAB" as const;
   if (/syllabus|outline|logistics|grading|schedule|course info/.test(hay)) return "OVERVIEW" as const;
   return "NOTES" as const;
 }

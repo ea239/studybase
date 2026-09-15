@@ -81,11 +81,34 @@ function chapterTitle(label: string): string {
 // to this one at a time per subject — concurrent calls for a never-seen
 // label would both find nothing and both try to create it, violating the
 // (subjectId, name) unique constraint.
+// A course code on its own — "ECE 356", "ECE356 F26" — is the running header
+// of every slide in the course, so it names no chapter. The model is told not
+// to use it, but this is the backstop: one bad label creates a real chapter
+// row that then collects items for the rest of the term.
+const COURSE_CODE_ONLY = /^[a-z]{2,6}\s*\d{2,4}[a-z]?(\s*[-–:]\s*.{0,4})?$/i;
+
+function isNotAChapter(label: string, subjectName: string): boolean {
+  const normalised = label.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalised) return true;
+  if (normalised === subjectName.trim().toLowerCase()) return true;
+  return COURSE_CODE_ONLY.test(normalised);
+}
+
+/**
+ * Finds or creates the chapter for a label, or returns null when the label
+ * does not name one.
+ */
 export async function resolveChapter(
   subjectId: string,
   label: string,
   cache: Map<string, string>
-): Promise<string> {
+): Promise<string | null> {
+  const subject = await prisma.subject.findUnique({
+    where: { id: subjectId },
+    select: { name: true },
+  });
+  if (subject && isNotAChapter(label, subject.name)) return null;
+
   const key = chapterKey(label);
   const cacheKey = `${subjectId}::${key}`;
   const cached = cache.get(cacheKey);

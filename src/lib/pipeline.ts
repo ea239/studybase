@@ -343,7 +343,12 @@ export async function processMaterial(materialId: string) {
       return;
     }
 
-    const result = await extractStructuredContent(aiSettings, pages, material.category);
+    const result = await extractStructuredContent(
+      aiSettings,
+      pages,
+      material.category,
+      material.filename
+    );
 
     // Only AI-generated rows from a previous run are cleared; anything a
     // human edited should get its own "isAiGenerated: false" flag upstream
