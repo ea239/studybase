@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { CalendarView, type CalendarEvent } from "./CalendarView";
+import { LearnSessionNotice } from "@/components/LearnSessionNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function CalendarPage() {
         <h1 className="text-2xl font-semibold tracking-tight">日历</h1>
         <p className="mt-1 text-sm text-neutral-500">从课程大纲和实验说明里提取的截止日期。</p>
       </div>
+      <LearnSessionNotice />
       <CalendarView events={shaped} />
     </div>
   );
