@@ -172,6 +172,7 @@ export default async function SubjectPage({
       {tab === "home" ? (
         <SubjectHome
           subjectId={id}
+          subjectName={subject.name}
           chapters={lectureGroups.map(({ chapter, entries }) => ({
             key: groupKey(chapter),
             name: chapter?.name ?? "其他内容",

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { unlink } from "fs/promises";
-import { absoluteUploadPath } from "@/lib/storage";
+import { deleteMaterialFiles } from "@/lib/storage";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -36,10 +35,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!material) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   await prisma.material.delete({ where: { id } }); // cascades pages/knowledgePoints/questions
-  try {
-    await unlink(absoluteUploadPath(material.storagePath));
-  } catch {
-    // file already gone — not fatal, the DB row is the source of truth for existence
-  }
+  await deleteMaterialFiles(material.id, material.storagePath);
   return NextResponse.json({ ok: true });
 }

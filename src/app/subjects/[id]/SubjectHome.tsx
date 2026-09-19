@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { DeleteSubject } from "./DeleteSubject";
 
 export type HomeChapter = { key: string; name: string; points: number };
 export type HomeFacts = {
@@ -63,6 +64,7 @@ function CourseFacts({ facts }: { facts: HomeFacts }) {
 
 export function SubjectHome({
   subjectId,
+  subjectName,
   chapters,
   facts,
   counts,
@@ -70,6 +72,7 @@ export function SubjectHome({
   children,
 }: {
   subjectId: string;
+  subjectName: string;
   chapters: HomeChapter[];
   facts: HomeFacts;
   counts: { questions: number; labs: number; materials: number };
@@ -242,6 +245,10 @@ export function SubjectHome({
       </div>
 
       {children}
+
+      {/* Bottom of the overview, small and grey: reachable when wanted, not in
+          the way of anything else. */}
+      <DeleteSubject subjectId={subjectId} subjectName={subjectName} />
     </div>
   );
 }
