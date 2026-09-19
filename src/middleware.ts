@@ -11,8 +11,22 @@ const PUBLIC_PREFIXES = ["/login", "/api/auth/", "/api/mcp"];
 // the owner's call — approved members get the study material, nothing more.
 const OWNER_ONLY_PREFIXES = ["/settings", "/api/settings", "/api/users", "/api/learn"];
 
+/**
+ * A deployment with no login, for a throwaway environment on a machine where
+ * Google sign-in cannot be used — its authorised origins are https hostnames,
+ * and a test instance on a port is neither.
+ *
+ * Off unless explicitly set, set only by docker-compose.test.yml, and the app
+ * shows a banner on every page while it is on. That banner is the real
+ * safeguard: an environment variable can be copied into the wrong file, but
+ * not without the result announcing itself on screen.
+ */
+export const DEMO_MODE = process.env.DEMO_MODE === "1";
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  if (DEMO_MODE) return NextResponse.next();
 
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) {
     return NextResponse.next();

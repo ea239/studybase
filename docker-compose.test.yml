@@ -1,0 +1,58 @@
+# A second, throwaway deployment for demos and experiments.
+#
+# Shares nothing writable with the real one: its own database file, its own
+# uploads, its own container names and port. Running both at once is the point
+# — breaking things here must not be able to touch what is deployed.
+#
+#   docker compose -f docker-compose.test.yml up -d --build
+#
+# There is no cloudflared service: this is not meant to be public.
+name: studybase-test
+
+services:
+  migrate:
+    build:
+      context: .
+      target: migrator
+    container_name: studybase-test-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: file:/app/data/studybase.db
+    volumes:
+      - ./data-test:/app/data
+
+  studybase:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    container_name: studybase-test
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: file:/app/data/studybase.db
+      # Its own secret, so a session minted here is not valid against the real
+      # deployment and vice versa.
+      AUTH_SECRET: ${TEST_AUTH_SECRET:-studybase-test-only-not-a-real-secret}
+      APP_PASSWORD: ${APP_PASSWORD:-unused-in-demo-mode}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
+      # No login: Google's authorised origins are https hostnames, and this
+      # instance is reached over a port. Every page says so while it is on.
+      DEMO_MODE: "1"
+      # Kept apart from the real uploads — the same path would let this
+      # instance delete files the deployed one is serving.
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - ./data-test:/app/data
+      - ./uploads-test:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      # Bound to the Tailscale address rather than 0.0.0.0, following the same
+      # pattern as the other dev service on this host: reachable from your own
+      # devices, not from the rest of the network. It has no login, so it must
+      # never be given a public hostname.
+      #
+      # 3001 belongs to the portfolio container; 3002 is free.
+      - "${TEST_BIND_ADDR:-100.126.176.101}:3002:3000"

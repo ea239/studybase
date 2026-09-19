@@ -275,22 +275,36 @@ async function flushChapterNotes() {
   }
 }
 
-// Processing lives in this process, so anything still marked PROCESSING when
-// this process starts was orphaned by a previous one and will never finish.
-// Called from the materials list endpoint (the first place staleness would be
-// visible) rather than at import time, since this module is only loaded when
-// an upload/reprocess route runs.
-let sweptOrphans = false;
+/**
+ * Re-queues work that a restart interrupted.
+ *
+ * The queue lives in this process, but the rows outlive it: a material left
+ * PENDING when the container stopped is one nobody ever picked up again, and
+ * PROCESSING means one that was cut off mid-parse. Neither recovers on its
+ * own, so they simply sat — five files sat PENDING for four days after a
+ * deploy, and the only sign was a progress dock reporting a queue that was
+ * never going to move.
+ *
+ * Called once at startup. Re-parsing something that had already finished is
+ * harmless — it replaces its own derived rows — where leaving it is not.
+ */
+let resumed = false;
 
-export async function settleOrphanedProcessing() {
-  if (sweptOrphans) return;
-  sweptOrphans = true;
-  await prisma.material
-    .updateMany({
-      where: { status: "PROCESSING" },
-      data: { status: "FAILED", errorMessage: "处理被中断（服务重启），请重新解析。" },
+export async function resumeInterruptedWork() {
+  if (resumed) return;
+  resumed = true;
+
+  const stranded = await prisma.material
+    .findMany({
+      where: { status: { in: ["PENDING", "PROCESSING"] } },
+      orderBy: { updatedAt: "asc" },
+      select: { id: true, filename: true },
     })
-    .catch(() => {});
+    .catch(() => []);
+
+  if (stranded.length === 0) return;
+  console.log(`[pipeline] 重新排入 ${stranded.length} 份被中断的资料`);
+  for (const material of stranded) void enqueueProcessMaterial(material.id);
 }
 
 export async function processMaterial(materialId: string) {

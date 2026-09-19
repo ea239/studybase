@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { saveUpload } from "@/lib/storage";
-import { enqueueProcessMaterial, settleOrphanedProcessing } from "@/lib/pipeline";
+import { enqueueProcessMaterial } from "@/lib/pipeline";
 import { materialTypeOf } from "@/lib/fileTypes";
 
 export async function GET(req: NextRequest) {
-  await settleOrphanedProcessing();
   const { searchParams } = new URL(req.url);
   const subjectId = searchParams.get("subjectId") ?? undefined;
   const chapterId = searchParams.get("chapterId") ?? undefined;

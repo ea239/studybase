@@ -8,6 +8,13 @@ export async function register() {
   // `next dev` restarts constantly; a background sync there would be noise.
   if (process.env.NODE_ENV !== "production") return;
 
+  // Anything the last shutdown interrupted, before anything else is queued
+  // behind it.
+  const { resumeInterruptedWork } = await import("@/lib/pipeline");
+  await resumeInterruptedWork().catch((err) => {
+    console.error("[pipeline] 恢复中断的任务失败", err);
+  });
+
   const { startLearnSchedule } = await import("@/lib/learn/schedule");
   startLearnSchedule();
 }

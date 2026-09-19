@@ -3,7 +3,10 @@ import path from "path";
 
 // Phase 1: local filesystem storage. Swap this module for an S3/R2-backed
 // implementation later — callers only depend on save/read/absolutePath.
-const UPLOAD_ROOT = path.join(process.cwd(), "src", "data", "uploads");
+//
+// Configurable so a second deployment on the same host keeps its own files.
+// Sharing them would let a throwaway environment delete the real one's uploads.
+const UPLOAD_ROOT = process.env.UPLOAD_DIR || path.join(process.cwd(), "src", "data", "uploads");
 
 export async function saveUpload(id: string, originalName: string, buffer: Buffer) {
   await mkdir(UPLOAD_ROOT, { recursive: true });

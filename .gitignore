@@ -54,3 +54,7 @@ prisma/dev.db-journal
 # Prisma writes a throwaway shadow database here when diffing migrations.
 shadow.db
 prisma/shadow.db
+
+# The test deployment's own database and uploads.
+/data-test
+/uploads-test
